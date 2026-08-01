@@ -288,3 +288,117 @@ export async function fetchActiveInternsService() {
 
   return normalized;
 }
+
+/**
+ * Updates an intern's onboarding step in Supabase.
+ * Automatically recalculates completion_percentage, updates timestamps,
+ * and synchronizes profiles.onboarding_status with the current step.
+ */
+export async function updateOnboardingStepProgressService(internId, updates) {
+  if (!internId) throw new Error('Intern ID is required for updating onboarding progress.');
+
+  // 1. Fetch current progress row
+  const { data: currentProgress, error: fetchErr } = await supabase
+    .from('onboarding_progress')
+    .select('*')
+    .eq('intern_id', internId)
+    .maybeSingle();
+
+  if (fetchErr) throw fetchErr;
+
+  // Merge proposed updates with current database record or default flags
+  const mergedProgress = {
+    ...(currentProgress || {
+      intern_id: internId,
+      profile_completed: false,
+      questionnaire_completed: false,
+      learning_intro_completed: false,
+      activities_completed: false,
+      interview_completed: false,
+      problem_statement_allocated: false,
+    }),
+    ...updates,
+  };
+
+  const newPercentage = calculateCompletionPercentage(mergedProgress);
+  const isFullyCompleted = isOnboardingCompleted(mergedProgress);
+  const targetOnboardingStatus = getMatchingOnboardingStatus(mergedProgress);
+
+  const payload = {
+    intern_id: internId,
+    ...mergedProgress,
+    completion_percentage: newPercentage,
+    updated_at: new Date().toISOString(),
+    ...(isFullyCompleted ? { completed_at: new Date().toISOString() } : {}),
+  };
+
+  // Atomic UPSERT on onboarding_progress table
+  const { data: updatedProgressRow, error: updateProgressErr } = await supabase
+    .from('onboarding_progress')
+    .upsert(payload, { onConflict: 'intern_id' })
+    .select()
+    .single();
+
+  if (updateProgressErr) throw updateProgressErr;
+
+  // 3. Synchronize profiles.onboarding_status after every progress update
+  const profilePayload = {
+    onboarding_status: targetOnboardingStatus,
+    updated_at: new Date().toISOString(),
+    ...(isFullyCompleted ? { account_status: 'active' } : {}),
+  };
+
+  const { error: profileUpdateErr } = await supabase
+    .from('profiles')
+    .update(profilePayload)
+    .eq('id', internId);
+
+  if (profileUpdateErr) throw profileUpdateErr;
+
+  return {
+    progress: updatedProgressRow || mergedProgress,
+    isFullyCompleted,
+    nextRoute: getNextOnboardingRoute(updatedProgressRow || mergedProgress),
+  };
+}
+
+/**
+ * Repair and synchronize existing inconsistent onboarding status records.
+ * Scans all profiles & onboarding_progress rows and fixes mismatches.
+ */
+export async function synchronizeAllOnboardingStatusesService() {
+  try {
+    const { data: progressRows, error: pErr } = await supabase
+      .from('onboarding_progress')
+      .select('*');
+
+    if (pErr) throw pErr;
+
+    let repairedCount = 0;
+    for (const prog of progressRows || []) {
+      const correctStatus = getMatchingOnboardingStatus(prog);
+
+      // Check current profile status
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_status')
+        .eq('id', prog.intern_id)
+        .maybeSingle();
+
+      if (profile && profile.onboarding_status !== correctStatus) {
+        await supabase
+          .from('profiles')
+          .update({
+            onboarding_status: correctStatus,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', prog.intern_id);
+        repairedCount++;
+      }
+    }
+    return { success: true, repairedCount };
+  } catch (err) {
+    console.error('Error synchronizing onboarding statuses:', err);
+    return { success: false, error: err.message };
+  }
+}
