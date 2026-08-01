@@ -35,7 +35,8 @@ export async function fetchSuperAdminDashboardStats() {
     // Fetch Allocated Problem Statements for Admins
     const { data: adminPsData } = await supabase
       .from('admin_problem_statements')
-      .select('admin_id, problem_statements!problem_statement_id (title)');
+      .select('admin_id, problem_statements!problem_statement_id (title)')
+      .in('admin_id', adminIds);
 
     const adminPsMap = {};
     (adminPsData || []).forEach((row) => {
