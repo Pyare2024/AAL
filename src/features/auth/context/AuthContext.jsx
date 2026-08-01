@@ -35,8 +35,24 @@ export function AuthProvider({ children }) {
     try {
       setUser(authUser);
 
-      // Fetch Profile
-      const { data: profileData, error: profileErr } = await supabase
+      // Consolidated Single RPC Call for User Context
+      const { data: ctxData, error: ctxErr } = await supabase.rpc('get_current_user_context');
+
+      if (!ctxErr && ctxData && ctxData.authenticated) {
+        if (ctxData.profile) setProfile(ctxData.profile);
+        if (ctxData.user?.role) setRole(ctxData.user.role);
+        if (ctxData.onboarding_progress) setOnboardingProgress(ctxData.onboarding_progress);
+
+        return {
+          user: authUser,
+          profile: ctxData.profile,
+          role: ctxData.user?.role,
+          onboardingProgress: ctxData.onboarding_progress,
+        };
+      }
+
+      // Fallback in case RPC is not deployed in local development environment
+      const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
@@ -44,8 +60,7 @@ export function AuthProvider({ children }) {
 
       if (profileData) setProfile(profileData);
 
-      // Fetch User Role
-      const { data: roleData, error: roleErr } = await supabase
+      const { data: roleData } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', authUser.id)
@@ -54,7 +69,6 @@ export function AuthProvider({ children }) {
       if (roleData) setRole(roleData.role);
 
       let fetchedProgress = null;
-      // Fetch Onboarding Progress if intern
       if (roleData?.role === 'intern' || !roleData) {
         const { data: onboardingData } = await supabase
           .from('onboarding_progress')
@@ -81,6 +95,7 @@ export function AuthProvider({ children }) {
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     let isMounted = true;
