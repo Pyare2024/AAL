@@ -21,11 +21,12 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: QG-1: Code Quality (Lint)
+      - name: "QG-1: Code Quality (Lint)"
         run: npm run lint
 
-      - name: QG-2: Production Build
+      - name: "QG-2: Production Build"
         run: npm run build
 
-      - name: QG-3: Unit & Integration Tests
+      - name: "QG-3: Unit & Integration Tests"
         run: npm run test
+
