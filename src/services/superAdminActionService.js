@@ -1,7 +1,5 @@
 import { supabase } from '../lib/supabase';
 import { 
-  getCurrentOnboardingStep, 
-  calculateCompletionPercentage,
   updateOnboardingStepProgress 
 } from '../utils/onboardingUtils';
 
@@ -113,8 +111,6 @@ export async function forceCompleteOnboardingStep({ internId, stepKey, reason })
   return { success: true, progress, nextRoute };
 }
 
-import { sendInterviewEmailNotification } from './emailService';
-
 /**
  * 4. Schedule or Update Interview Details (Always saves database record first)
  */
@@ -210,7 +206,6 @@ export async function evaluateInterview({ internId, result, score, feedback }) {
 
   const isSelected = result === 'Selected';
   const isRejected = result === 'Rejected';
-  const isOnHold = result === 'On Hold';
 
   const itvStatus = isSelected ? 'Completed' : isRejected ? 'Rejected' : 'On Hold';
 
@@ -262,6 +257,7 @@ export async function evaluateInterview({ internId, result, score, feedback }) {
 
   return { success: true, result, status: itvStatus };
 }
+
 
 /**
  * 7. Allocate Problem Statement & Admin to Intern (Phase 5)
