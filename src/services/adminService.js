@@ -42,91 +42,40 @@ export async function createAdminAccount({
     throw new Error('An account with this email address already exists.');
   }
 
-  // 3. Attempt invocation of Supabase Edge Function 'create-admin'
-  try {
-    const { data: edgeFunctionData, error: edgeErr } = await supabase.functions.invoke('create-admin', {
-      body: {
-        fullName: fullName.trim(),
-        email: email.trim().toLowerCase(),
-        mobile: mobile.trim(),
-        password,
-        accountStatus,
-        problemStatementIds: selectedProblemStatementIds,
-        createdBy: currentUser.id,
-      },
-    });
-
-    if (!edgeErr && edgeFunctionData?.success) {
-      return edgeFunctionData;
-    }
-  } catch (fnErr) {
-    console.warn('Edge Function create-admin not deployed or unavailable, running client fallback flow:', fnErr);
-  }
-
-  // 4. Client-side Fallback Flow (for local dev / standard Supabase setup without edge functions deployed)
-  // Create user in Supabase Auth
-  const { data: authData, error: signUpError } = await supabase.auth.signUp({
-    email: email.trim().toLowerCase(),
-    password,
-    options: {
-      data: {
-        full_name: fullName.trim(),
-        role: 'admin',
-      },
+  // 3. Invocation of Supabase Edge Function 'create-admin'
+  const { data: edgeFunctionData, error: edgeErr } = await supabase.functions.invoke('create-admin', {
+    body: {
+      fullName: fullName.trim(),
+      email: email.trim().toLowerCase(),
+      mobile: mobile.trim(),
+      password,
+      accountStatus,
+      problemStatementIds: selectedProblemStatementIds,
+      createdBy: currentUser.id,
     },
   });
 
-  if (signUpError) throw signUpError;
-  const newUserId = authData?.user?.id;
-  if (!newUserId) throw new Error('Failed to obtain new Auth user ID from Supabase.');
-
-  // Create Profile
-  const { error: profileError } = await supabase.from('profiles').upsert([
-    {
-      id: newUserId,
-      full_name: fullName.trim(),
-      email: email.trim().toLowerCase(),
-      mobile: mobile.trim(),
-      account_status: accountStatus,
-      onboarding_status: 'completed',
-    },
-  ]);
-  if (profileError) console.warn('Profile creation note:', profileError);
-
-  // Assign Role = 'admin' in user_roles
-  const { error: roleInsertError } = await supabase.from('user_roles').upsert([
-    {
-      user_id: newUserId,
-      role: 'admin',
-    },
-  ]);
-  if (roleInsertError) console.warn('User role assignment note:', roleInsertError);
-
-  // Insert Allocated Problem Statements into admin_problem_statements
-  if (selectedProblemStatementIds && selectedProblemStatementIds.length > 0) {
-    const allocPayload = selectedProblemStatementIds.map((psId) => ({
-      admin_id: newUserId,
-      problem_statement_id: psId,
-    }));
-
-    const { error: allocError } = await supabase
-      .from('admin_problem_statements')
-      .insert(allocPayload);
-    if (allocError) console.warn('Admin problem statements allocation note:', allocError);
+  if (edgeErr || !edgeFunctionData?.success) {
+    throw new Error(
+      `Failed to create admin account via Edge Function: ${
+        edgeErr?.message || edgeFunctionData?.message || 'Service unavailable'
+      }`
+    );
   }
 
-  // Write Audit Log
+  // 4. Record Audit Log for successful creation
   try {
     await supabase.from('audit_logs').insert([
       {
-        performed_by: currentUser.id,
+        actor_id: currentUser.id,
         action: 'CREATE_ADMIN_ACCOUNT',
-        target_user_id: newUserId,
-        details: JSON.stringify({
+        entity_type: 'profiles',
+        entity_id: edgeFunctionData.userId,
+        new_data: {
           admin_name: fullName,
           admin_email: email,
           allocated_statements: selectedProblemStatementIds,
-        }),
+        },
         created_at: new Date().toISOString(),
       },
     ]);
@@ -134,5 +83,6 @@ export async function createAdminAccount({
     console.warn('Audit log write note:', auditErr);
   }
 
-  return { success: true, userId: newUserId, message: 'Admin account created successfully!' };
+  return edgeFunctionData;
 }
+
