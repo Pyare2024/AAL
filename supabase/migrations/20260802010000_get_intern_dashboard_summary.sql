@@ -38,7 +38,7 @@ BEGIN
   -- 3. Actionable Pending Work Items (draft / resubmission_required)
   SELECT jsonb_agg(to_jsonb(t)) INTO v_actionable_tasks
   FROM (
-    SELECT id, title, description, due_at, status, priority
+    SELECT id, title, description, due_at, status
     FROM public.pending_work_items
     WHERE assigned_to = v_uid AND status IN ('draft', 'resubmission_required')
     ORDER BY due_at ASC LIMIT 3
