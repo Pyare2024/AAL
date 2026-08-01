@@ -34,12 +34,31 @@ export class ProfileRepository {
     if (!userIds || userIds.length === 0) return [];
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id, full_name, email, mobile, account_status, onboarding_status, created_at')
       .in('id', userIds);
 
     if (error) throw error;
     return data || [];
   }
+
+  static async getPaginatedProfiles({ page = 1, pageSize = 20, search = '' }) {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase
+      .from('profiles')
+      .select('id, full_name, email, account_status, onboarding_status, created_at', { count: 'exact' });
+
+    if (search && search.trim()) {
+      query = query.or(`full_name.ilike.%${search.trim()}%,email.ilike.%${search.trim()}%`);
+    }
+
+    const { data, count, error } = await query.range(from, to).order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return { data: data || [], total: count || 0, page, pageSize };
+  }
+
 
   static async updateProfile(userId, updates) {
     const { data, error } = await supabase

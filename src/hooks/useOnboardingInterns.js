@@ -9,9 +9,13 @@ export const ONBOARDING_INTERNS_QUERY_KEY = ['superAdmin', 'onboardingInterns'];
  */
 export function useOnboardingInterns() {
   return useQuery({
-    queryKey: ONBOARDING_INTERNS_QUERY_KEY,
-    queryFn: fetchOnboardingInterns,
-    staleTime: 1000 * 60 * 2, // 2 minutes stale time
+    queryKey: ['super-admin-onboarding-interns'],
+    queryFn: async () => {
+      const result = await fetchAllOnboardingInterns();
+      return result;
+    },
+    staleTime: 30000,
+    gcTime: 300000,
     refetchOnWindowFocus: false,
   });
 }
