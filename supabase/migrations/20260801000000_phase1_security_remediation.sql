@@ -89,11 +89,15 @@ CREATE POLICY "Admin view allocated or onboarding profiles"
     )
   );
 
--- ==============================================================================
--- 4. STORAGE OBJECT ROW LEVEL SECURITY (RLS) POLICIES
--- ==============================================================================
+-- Ensure RLS is enabled on storage.objects if permitted by role
+DO $$
+BEGIN
+  ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    NULL; -- RLS is already enabled by Supabase platform on storage.objects
+END $$;
 
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 -- Profile Photos Bucket Policies
 DROP POLICY IF EXISTS "Authenticated select profile photos" ON storage.objects;
