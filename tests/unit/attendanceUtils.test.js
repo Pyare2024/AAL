@@ -12,14 +12,15 @@ describe('attendanceUtils Pure Functions', () => {
     expect(distance).toBeGreaterThan(200000); // ~290km
   });
 
-  it('TC-UT-ATT-02: generates uppercase 6-character alphanumeric session code', () => {
+  it('TC-UT-ATT-02: generates uppercase session code starting with ATT-', () => {
     const code = generateSessionCode();
-    expect(code).toHaveLength(6);
-    expect(code).toMatch(/^[A-Z0-9]{6}$/);
+    expect(code).toHaveLength(8);
+    expect(code).toMatch(/^ATT-\d{4}$/);
   });
 
-  it('TC-UT-ATT-03: generates 8-character secure session password', () => {
+  it('TC-UT-ATT-03: generates 6-digit numeric secure session password', () => {
     const passcode = generateSessionPassword();
-    expect(passcode).toHaveLength(8);
+    expect(passcode).toHaveLength(6);
+    expect(passcode).toMatch(/^\d{6}$/);
   });
 });
