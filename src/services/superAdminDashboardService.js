@@ -191,6 +191,10 @@ export async function fetchSuperAdminDashboardStats() {
     });
   }
 
+  // 4. Fetch Announcement Summary
+  const { data: announcementSummary, error: announcementErr } = await supabase.rpc('get_announcement_summary');
+  if (announcementErr) console.warn('Note on fetching announcement_summary:', announcementErr);
+
   return {
     admins: {
       total: totalAdmins,
@@ -213,6 +217,10 @@ export async function fetchSuperAdminDashboardStats() {
       total: totalPlatformActiveInterns,
       active: totalPlatformActiveInterns,
     },
+    announcements: {
+      published: announcementSummary?.published || 0,
+      scheduled: announcementSummary?.scheduled || 0,
+    }
   };
 }
 

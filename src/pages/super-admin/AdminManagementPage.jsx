@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { createAdminAccount } from '../../services/adminService';
@@ -7,29 +7,28 @@ import {
   UserCheck,
   Plus,
   Search,
-  Filter,
   ArrowUpDown,
   Edit,
   Eye,
   CheckCircle2,
   XCircle,
-  Users,
-  FileText,
   Calendar,
   AlertCircle,
   RefreshCw,
   X,
   Mail,
   Phone,
-  Lock,
   ShieldAlert,
-  ArrowLeft
+  ArrowLeft,
+  MoreVertical,
+  Trash2,
+  FolderOpen,
+  Info
 } from 'lucide-react';
 
 export function AdminManagementPage() {
   const navigate = useNavigate();
   const location = useLocation();
-
   const isCreateRoute = location.pathname.endsWith('/create');
 
   // Admin Roster & Metadata State
@@ -48,6 +47,7 @@ export function AdminManagementPage() {
   // Modal / View States
   const [modalMode, setModalMode] = useState(null); // null, 'edit', 'details', 'allocations'
   const [selectedAdmin, setSelectedAdmin] = useState(null);
+  const [openDropdownId, setOpenDropdownId] = useState(null);
 
   // Create / Edit Form State
   const [createFormData, setCreateFormData] = useState({
@@ -70,18 +70,13 @@ export function AdminManagementPage() {
   const [formErrors, setFormErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Action Confirmation State (Activate/Deactivate)
+  // Action Confirmation State
   const [confirmAction, setConfirmAction] = useState(null);
 
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
-
-  const fetchInitialData = async () => {
-    setLoading(true);
+  const fetchInitialData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     setErrorMsg(null);
     try {
-      // 1. Fetch Problem Statements for selection/filtering
       const { data: psData } = await supabase
         .from('problem_statements')
         .select('id, title, slug, status')
@@ -89,7 +84,6 @@ export function AdminManagementPage() {
 
       setProblemStatements(psData || []);
 
-      // 2. Fetch Users with role = 'admin' from user_roles table
       const { data: adminRoles, error: rolesErr } = await supabase
         .from('user_roles')
         .select('user_id')
@@ -98,11 +92,9 @@ export function AdminManagementPage() {
       if (rolesErr) throw rolesErr;
 
       const adminUserIds = (adminRoles || []).map((r) => r.user_id);
-
       let profileRecords = [];
 
       if (adminUserIds.length > 0) {
-        // Fetch profiles matching admin user IDs
         const { data: profiles, error: profErr } = await supabase
           .from('profiles')
           .select('*')
@@ -113,40 +105,6 @@ export function AdminManagementPage() {
         profileRecords = profiles || [];
       }
 
-      // If no admin profiles returned from DB yet, initialize mock sample admins for immediate UI demonstration
-      if (profileRecords.length === 0) {
-        profileRecords = [
-          {
-            id: 'admin-demo-1',
-            full_name: 'Dr. Rajesh Kulkarni',
-            email: 'rajesh.kulkarni@asg.com',
-            mobile: '+91 9823011223',
-            account_status: 'active',
-            created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          {
-            id: 'admin-demo-2',
-            full_name: 'Priya Sharma',
-            email: 'priya.sharma@asg.com',
-            mobile: '+91 9811223344',
-            account_status: 'active',
-            created_at: new Date(Date.now() - 15 * 86400000).toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          {
-            id: 'admin-demo-3',
-            full_name: 'Vikramaditya Mehta',
-            email: 'vikram.mehta@asg.com',
-            mobile: '+91 9744556677',
-            account_status: 'inactive',
-            created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        ];
-      }
-
-      // 3. Fetch Admin Problem Statement Allocations
       const { data: adminPsData } = await supabase
         .from('admin_problem_statements')
         .select('admin_id, problem_statement_id, problem_statements(id, title)');
@@ -159,7 +117,6 @@ export function AdminManagementPage() {
         }
       });
 
-      // 4. Fetch Intern Allocations Count per Problem Statement to calculate intern count per Admin
       const { data: internPsData } = await supabase
         .from('profiles')
         .select('problem_statement_id, id')
@@ -171,28 +128,18 @@ export function AdminManagementPage() {
         psInternMap[row.problem_statement_id].add(row.id);
       });
 
-      // Enrich admin records with statements and calculated intern count
-      const enrichedAdmins = profileRecords.map((adm, idx) => {
-        const allocatedStatements = adminPsMap[adm.id] || (
-          idx === 0
-            ? [{ id: 'ps-1', title: 'ASG Ecosystem' }, { id: 'ps-2', title: 'Career Intelligence Platform' }]
-            : idx === 1
-            ? [{ id: 'ps-3', title: 'Digital Economy' }]
-            : []
-        );
-
-        // Sum unique interns allocated across their problem statements
+      const enrichedAdmins = profileRecords.map((adm) => {
+        const allocatedStatements = adminPsMap[adm.id] || [];
         const internSet = new Set();
         allocatedStatements.forEach((ps) => {
           if (psInternMap[ps.id]) {
             psInternMap[ps.id].forEach((iId) => internSet.add(iId));
           }
         });
-
         return {
           ...adm,
           allocated_statements: allocatedStatements,
-          allocated_interns_count: internSet.size > 0 ? internSet.size : (idx === 0 ? 14 : idx === 1 ? 8 : 0),
+          allocated_interns_count: internSet.size,
         };
       });
 
@@ -203,10 +150,25 @@ export function AdminManagementPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Validation for Create Form
-  const validateCreateForm = () => {
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
+
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        setConfirmAction(null);
+        setOpenDropdownId(null);
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, []);
+
+  const validateCreateForm = useCallback(() => {
     const errors = {};
     if (!createFormData.fullName.trim()) errors.fullName = 'Full Name is required.';
     if (!createFormData.email.trim()) {
@@ -224,7 +186,6 @@ export function AdminManagementPage() {
       errors.confirmPassword = 'Passwords do not match.';
     }
 
-    // Check duplicate email in current roster
     const existing = admins.find(
       (a) => a.email.toLowerCase().trim() === createFormData.email.toLowerCase().trim()
     );
@@ -234,9 +195,8 @@ export function AdminManagementPage() {
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
-  };
+  }, [createFormData, admins]);
 
-  // Handle Create Admin Submission
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
     if (!validateCreateForm() || isSubmitting) return;
@@ -245,7 +205,7 @@ export function AdminManagementPage() {
     setErrorMsg(null);
 
     try {
-      const res = await createAdminAccount({
+      await createAdminAccount({
         fullName: createFormData.fullName,
         email: createFormData.email,
         mobile: createFormData.mobile,
@@ -255,20 +215,12 @@ export function AdminManagementPage() {
       });
 
       setSuccessMsg(`Admin account "${createFormData.fullName}" created successfully!`);
-      
-      // Reset form & Navigate back to Admin roster
       setCreateFormData({
-        fullName: '',
-        email: '',
-        mobile: '',
-        password: '',
-        confirmPassword: '',
-        accountStatus: 'active',
-        selectedPsIds: [],
+        fullName: '', email: '', mobile: '', password: '', confirmPassword: '', accountStatus: 'active', selectedPsIds: [],
       });
       setFormErrors({});
       navigate('/super-admin/admins');
-      await fetchInitialData();
+      await fetchInitialData(true);
     } catch (err) {
       console.error('Error in create admin submit:', err);
       setErrorMsg(err.message || 'Failed to create Admin account.');
@@ -277,7 +229,6 @@ export function AdminManagementPage() {
     }
   };
 
-  // Open Edit Modal
   const openEditModal = (admin) => {
     setSelectedAdmin(admin);
     setEditFormData({
@@ -288,47 +239,59 @@ export function AdminManagementPage() {
     });
     setFormErrors({});
     setModalMode('edit');
+    setOpenDropdownId(null);
   };
 
-  // Validate Edit Form
-  const validateEditForm = () => {
+  const openDetailsDrawer = (admin) => {
+    setSelectedAdmin(admin);
+    setModalMode('details');
+    setOpenDropdownId(null);
+  };
+
+  const openAssignModal = (admin) => {
+    setSelectedAdmin(admin);
+    setEditFormData(prev => ({
+      ...prev,
+      selectedPsIds: (admin.allocated_statements || []).map((s) => s.id),
+    }));
+    setModalMode('allocations');
+    setOpenDropdownId(null);
+  };
+
+  const validateEditForm = useCallback(() => {
     const errors = {};
     if (!editFormData.fullName.trim()) errors.fullName = 'Full Name is required.';
     if (!editFormData.mobile.trim()) errors.mobile = 'Mobile number is required.';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
-  };
+  }, [editFormData]);
 
-  // Execute Edit Save
   const handleEditSubmit = async (e) => {
     e.preventDefault();
-    if (!validateEditForm() || !selectedAdmin || isSubmitting) return;
+    if ((modalMode === 'edit' && !validateEditForm()) || !selectedAdmin || isSubmitting) return;
 
     setIsSubmitting(true);
     setErrorMsg(null);
 
     try {
-      // 1. Update Profile in profiles table
-      const { error: profileErr } = await supabase
-        .from('profiles')
-        .update({
-          full_name: editFormData.fullName.trim(),
-          mobile: editFormData.mobile.trim(),
-          account_status: editFormData.accountStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', selectedAdmin.id);
+      if (modalMode === 'edit') {
+        const { error: profileErr } = await supabase
+          .from('profiles')
+          .update({
+            full_name: editFormData.fullName.trim(),
+            mobile: editFormData.mobile.trim(),
+            account_status: editFormData.accountStatus,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', selectedAdmin.id);
+        if (profileErr) console.warn('Profile update note:', profileErr);
+      }
 
-      if (profileErr) console.warn('Profile update note:', profileErr);
-
-      // 2. Update Admin Problem Statement Allocations
-      // First delete existing allocations
       await supabase
         .from('admin_problem_statements')
         .delete()
         .eq('admin_id', selectedAdmin.id);
 
-      // Then insert newly selected ones
       if (editFormData.selectedPsIds.length > 0) {
         const allocPayload = editFormData.selectedPsIds.map((psId) => ({
           admin_id: selectedAdmin.id,
@@ -337,9 +300,9 @@ export function AdminManagementPage() {
         await supabase.from('admin_problem_statements').insert(allocPayload);
       }
 
-      setSuccessMsg(`Admin account "${editFormData.fullName}" updated successfully!`);
+      setSuccessMsg(`Admin account "${selectedAdmin.full_name}" updated successfully!`);
       closeModal();
-      await fetchInitialData();
+      await fetchInitialData(true);
     } catch (err) {
       console.error('Error updating admin:', err);
       setErrorMsg(err.message || 'Failed to update Admin account.');
@@ -348,23 +311,31 @@ export function AdminManagementPage() {
     }
   };
 
-  // Trigger Activate/Deactivate Toggle
   const handleToggleStatusClick = (admin) => {
     const newStatus = admin.account_status === 'active' ? 'inactive' : 'active';
     const isDeactivating = newStatus === 'inactive';
-
     setConfirmAction({
       admin,
       newStatus,
-      title: isDeactivating ? 'Deactivate Admin Account' : 'Reactivate Admin Account',
+      title: isDeactivating ? 'Deactivate Admin' : 'Reactivate Admin',
       message: isDeactivating
-        ? `Are you sure you want to deactivate "${admin.full_name}"? Deactivated Admins cannot access the Admin Dashboard. Historical records and allocations will be preserved.`
-        : `Are you sure you want to reactivate "${admin.full_name}"? This will restore their access to the Admin Dashboard.`,
+        ? `Are you sure you want to deactivate "${admin.full_name}"? They will lose dashboard access immediately.`
+        : `Are you sure you want to reactivate "${admin.full_name}"? This will restore their dashboard access.`,
     });
+    setOpenDropdownId(null);
   };
 
-  // Execute Toggle Status
-  const executeToggleStatus = async () => {
+  const handleDeleteClick = (admin) => {
+    setConfirmAction({
+      admin,
+      newStatus: 'deleted',
+      title: 'Delete Admin Account',
+      message: `Are you sure you want to permanently delete "${admin.full_name}"? This action cannot be undone.`,
+    });
+    setOpenDropdownId(null);
+  };
+
+  const executeConfirmAction = async () => {
     if (!confirmAction?.admin || isSubmitting) return;
     const { admin, newStatus } = confirmAction;
 
@@ -376,20 +347,20 @@ export function AdminManagementPage() {
         .from('profiles')
         .update({ account_status: newStatus, updated_at: new Date().toISOString() })
         .eq('id', admin.id);
-
-      if (error) console.warn('Status toggle note:', error);
-
-      setSuccessMsg(
-        `Admin "${admin.full_name}" has been ${newStatus === 'active' ? 'reactivated' : 'deactivated'}.`
-      );
+      
+      if (error) throw error;
+      
+      if (newStatus === 'deleted') {
+        setSuccessMsg(`Admin "${admin.full_name}" has been deleted.`);
+      } else {
+        setSuccessMsg(`Admin "${admin.full_name}" has been ${newStatus === 'active' ? 'reactivated' : 'deactivated'}.`);
+      }
+      
       setConfirmAction(null);
-      await fetchInitialData();
+      await fetchInitialData(true);
     } catch (err) {
-      console.error('Error toggling status:', err);
-      setSuccessMsg(
-        `Admin "${admin.full_name}" status updated to ${newStatus}.`
-      );
-      setConfirmAction(null);
+      console.error('Error in confirm action:', err);
+      setErrorMsg(err.message || 'Failed to execute action.');
     } finally {
       setIsSubmitting(false);
     }
@@ -401,64 +372,62 @@ export function AdminManagementPage() {
     setFormErrors({});
   };
 
-  // Filtering & Sorting
-  const filteredAdmins = admins.filter((admin) => {
-    const matchesSearch =
-      !searchQuery ||
-      admin.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      admin.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (admin.mobile && admin.mobile.includes(searchQuery));
+  const { filteredAdmins, sortedAdmins } = useMemo(() => {
+    const filtered = admins.filter((admin) => {
+      if (admin.account_status === 'deleted') return false;
+      const matchesSearch =
+        !searchQuery ||
+        admin.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        admin.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (admin.mobile && admin.mobile.includes(searchQuery));
+      const matchesStatus = statusFilter === 'all' || admin.account_status === statusFilter;
+      const matchesPs =
+        psFilter === 'all' ||
+        (admin.allocated_statements || []).some((ps) => ps.id === psFilter);
+      return matchesSearch && matchesStatus && matchesPs;
+    });
 
-    const matchesStatus = statusFilter === 'all' || admin.account_status === statusFilter;
+    const sorted = [...filtered].sort((a, b) => {
+      if (sortBy === 'newest') return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+      if (sortBy === 'oldest') return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+      if (sortBy === 'name') return (a.full_name || '').localeCompare(b.full_name || '');
+      return 0;
+    });
+    return { filteredAdmins: filtered, sortedAdmins: sorted };
+  }, [admins, searchQuery, statusFilter, psFilter, sortBy]);
 
-    const matchesPs =
-      psFilter === 'all' ||
-      (admin.allocated_statements || []).some((ps) => ps.id === psFilter);
+  const kpis = useMemo(() => {
+    const validAdmins = admins.filter(a => a.account_status !== 'deleted');
+    return {
+      total: validAdmins.length,
+      active: validAdmins.filter(a => a.account_status === 'active').length,
+      inactive: validAdmins.filter(a => a.account_status !== 'active').length,
+      unassigned: validAdmins.filter(a => (a.allocated_statements || []).length === 0).length,
+      managedInterns: validAdmins.reduce((sum, a) => sum + (a.allocated_interns_count || 0), 0),
+      coveredPs: new Set(validAdmins.flatMap(a => (a.allocated_statements || []).map(p => p.id))).size
+    };
+  }, [admins]);
 
-    return matchesSearch && matchesStatus && matchesPs;
-  });
-
-  const sortedAdmins = [...filteredAdmins].sort((a, b) => {
-    if (sortBy === 'newest') {
-      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
-    } else if (sortBy === 'oldest') {
-      return new Date(a.created_at || 0) - new Date(b.created_at || 0);
-    } else if (sortBy === 'name') {
-      return a.full_name.localeCompare(b.full_name);
-    }
-    return 0;
-  });
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return 'N/A';
+  const formatDate = useCallback((dateStr) => {
+    if (!dateStr) return '—';
     const d = new Date(dateStr);
-    return isNaN(d.getTime())
-      ? dateStr
-      : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  };
+    return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }, []);
 
-  // RENDER CREATE ADMIN PAGE IF ON /super-admin/admins/create
   if (isCreateRoute) {
     return (
-      <div className="space-y-6 text-left">
-        {/* Header Banner */}
+      <div className="space-y-6 text-[#171717] pb-12">
         <div className="bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-sm flex items-center justify-between gap-4">
           <div>
-            <Link
-              to="/super-admin/admins"
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#FF8A00] hover:underline mb-2"
-            >
+            <Link to="/super-admin/admins" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#FF8A00] hover:underline mb-2">
               <ArrowLeft className="h-3.5 w-3.5" />
               <span>Back to Admin Roster</span>
             </Link>
-            <h1 className="text-2xl font-bold text-[#0D0D0D]">Create Admin Account</h1>
-            <p className="text-sm text-[#9A9A9A] mt-0.5">
-              Provision a new Admin account and allocate Problem Statements.
-            </p>
+            <h1 className="text-2xl font-bold">Create Admin Account</h1>
+            <p className="text-sm text-[#737373] mt-0.5">Provision a new Administrator account and allocate initial responsibilities.</p>
           </div>
         </div>
 
-        {/* Create Form Card */}
         <div className="bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-sm max-w-3xl">
           <form onSubmit={handleCreateSubmit} className="space-y-5">
             {errorMsg && (
@@ -468,206 +437,53 @@ export function AdminManagementPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Full Name */}
-              <div>
-                <label className="block text-xs font-bold text-[#0D0D0D] uppercase tracking-wider mb-1.5">
-                  Full Name <span className="text-[#FF3D00]">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Dr. Rajesh Kulkarni"
-                  value={createFormData.fullName}
-                  onChange={(e) => setCreateFormData({ ...createFormData, fullName: e.target.value })}
-                  className={`w-full px-3.5 py-2.5 bg-[#F7F7F7] border ${
-                    formErrors.fullName ? 'border-red-500 bg-red-50/20' : 'border-[#EDEDED]'
-                  } rounded-xl text-sm text-[#0D0D0D] focus:outline-none focus:border-[#FF8A00] focus:bg-white transition-all`}
-                />
-                {formErrors.fullName && (
-                  <p className="text-xs font-medium text-red-600 mt-1 flex items-center gap-1">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    <span>{formErrors.fullName}</span>
-                  </p>
-                )}
-              </div>
+            <AdminProfileForm 
+              formData={createFormData} 
+              setFormData={setCreateFormData} 
+              formErrors={formErrors} 
+              mode="create" 
+            />
 
-              {/* Email Address */}
-              <div>
-                <label className="block text-xs font-bold text-[#0D0D0D] uppercase tracking-wider mb-1.5">
-                  Email Address <span className="text-[#FF3D00]">*</span>
-                </label>
-                <input
-                  type="email"
-                  placeholder="e.g. rajesh@asg.com"
-                  value={createFormData.email}
-                  onChange={(e) => setCreateFormData({ ...createFormData, email: e.target.value })}
-                  className={`w-full px-3.5 py-2.5 bg-[#F7F7F7] border ${
-                    formErrors.email ? 'border-red-500 bg-red-50/20' : 'border-[#EDEDED]'
-                  } rounded-xl text-sm text-[#0D0D0D] focus:outline-none focus:border-[#FF8A00] focus:bg-white transition-all`}
-                />
-                {formErrors.email && (
-                  <p className="text-xs font-medium text-red-600 mt-1 flex items-center gap-1">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    <span>{formErrors.email}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Mobile Number */}
-              <div>
-                <label className="block text-xs font-bold text-[#0D0D0D] uppercase tracking-wider mb-1.5">
-                  Mobile Number <span className="text-[#FF3D00]">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. +91 9823011223"
-                  value={createFormData.mobile}
-                  onChange={(e) => setCreateFormData({ ...createFormData, mobile: e.target.value })}
-                  className={`w-full px-3.5 py-2.5 bg-[#F7F7F7] border ${
-                    formErrors.mobile ? 'border-red-500 bg-red-50/20' : 'border-[#EDEDED]'
-                  } rounded-xl text-sm text-[#0D0D0D] focus:outline-none focus:border-[#FF8A00] focus:bg-white transition-all`}
-                />
-                {formErrors.mobile && (
-                  <p className="text-xs font-medium text-red-600 mt-1 flex items-center gap-1">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    <span>{formErrors.mobile}</span>
-                  </p>
-                )}
-              </div>
-
-              {/* Initial Account Status */}
-              <div>
-                <label className="block text-xs font-bold text-[#0D0D0D] uppercase tracking-wider mb-1.5">
-                  Initial Account Status <span className="text-[#FF3D00]">*</span>
-                </label>
-                <select
-                  value={createFormData.accountStatus}
-                  onChange={(e) => setCreateFormData({ ...createFormData, accountStatus: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-sm text-[#0D0D0D] focus:outline-none focus:border-[#FF8A00] focus:bg-white transition-all cursor-pointer"
-                >
-                  <option value="active">Active (Dashboard Access Granted)</option>
-                  <option value="inactive">Inactive (Access Disabled)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Password */}
-              <div>
-                <label className="block text-xs font-bold text-[#0D0D0D] uppercase tracking-wider mb-1.5">
-                  Temporary Password <span className="text-[#FF3D00]">*</span>
-                </label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={createFormData.password}
-                  onChange={(e) => setCreateFormData({ ...createFormData, password: e.target.value })}
-                  className={`w-full px-3.5 py-2.5 bg-[#F7F7F7] border ${
-                    formErrors.password ? 'border-red-500 bg-red-50/20' : 'border-[#EDEDED]'
-                  } rounded-xl text-sm text-[#0D0D0D] focus:outline-none focus:border-[#FF8A00] focus:bg-white transition-all`}
-                />
-                {formErrors.password && (
-                  <p className="text-xs font-medium text-red-600 mt-1 flex items-center gap-1">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    <span>{formErrors.password}</span>
-                  </p>
-                )}
-              </div>
-
-              {/* Confirm Password */}
-              <div>
-                <label className="block text-xs font-bold text-[#0D0D0D] uppercase tracking-wider mb-1.5">
-                  Confirm Password <span className="text-[#FF3D00]">*</span>
-                </label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={createFormData.confirmPassword}
-                  onChange={(e) => setCreateFormData({ ...createFormData, confirmPassword: e.target.value })}
-                  className={`w-full px-3.5 py-2.5 bg-[#F7F7F7] border ${
-                    formErrors.confirmPassword ? 'border-red-500 bg-red-50/20' : 'border-[#EDEDED]'
-                  } rounded-xl text-sm text-[#0D0D0D] focus:outline-none focus:border-[#FF8A00] focus:bg-white transition-all`}
-                />
-                {formErrors.confirmPassword && (
-                  <p className="text-xs font-medium text-red-600 mt-1 flex items-center gap-1">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    <span>{formErrors.confirmPassword}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Allocate Problem Statements */}
-            <div className="pt-2">
-              <label className="block text-xs font-bold text-[#0D0D0D] uppercase tracking-wider mb-2">
-                Allocate Problem Statements (Optional - Multi Select)
+            <div className="pt-4 border-t border-[#EDEDED]">
+              <label className="block text-xs font-bold text-[#171717] uppercase tracking-wider mb-2">
+                Allocate Initial Problem Statements
               </label>
-              {problemStatements.length === 0 ? (
-                <div className="p-3 bg-[#F7F7F7] rounded-xl border border-[#EDEDED] text-xs text-[#9A9A9A]">
-                  No Problem Statements currently available. You can allocate statements later.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-3 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl">
-                  {problemStatements.map((ps) => {
-                    const isChecked = createFormData.selectedPsIds.includes(ps.id);
-                    return (
-                      <label
-                        key={ps.id}
-                        className={`flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer text-xs ${
-                          isChecked
-                            ? 'bg-white border-[#FF8A00] text-[#0D0D0D] font-bold shadow-xs'
-                            : 'bg-white/50 border-[#EDEDED] text-[#9A9A9A]'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setCreateFormData({
-                                ...createFormData,
-                                selectedPsIds: [...createFormData.selectedPsIds, ps.id],
-                              });
-                            } else {
-                              setCreateFormData({
-                                ...createFormData,
-                                selectedPsIds: createFormData.selectedPsIds.filter((id) => id !== ps.id),
-                              });
-                            }
-                          }}
-                          className="rounded text-[#FF8A00] focus:ring-[#FF8A00]"
-                        />
-                        <span className="truncate">{ps.title}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                {problemStatements.length === 0 && <p className="text-xs text-[#737373] italic">No Problem Statements available.</p>}
+                {problemStatements.map((ps) => (
+                  <label key={ps.id} className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all ${createFormData.selectedPsIds.includes(ps.id) ? 'border-[#FF8A00] bg-orange-50/30' : 'border-[#EDEDED] hover:bg-[#F7F7F7]'}`}>
+                    <input
+                      type="checkbox"
+                      checked={createFormData.selectedPsIds.includes(ps.id)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setCreateFormData(prev => ({
+                          ...prev,
+                          selectedPsIds: checked 
+                            ? [...prev.selectedPsIds, ps.id] 
+                            : prev.selectedPsIds.filter(id => id !== ps.id)
+                        }));
+                      }}
+                      className="h-4 w-4 text-[#FF8A00] rounded border-[#EDEDED] focus:ring-[#FF8A00] cursor-pointer"
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold text-[#171717] leading-tight">{ps.title}</span>
+                      <span className="text-[10px] text-[#9A9A9A] uppercase font-bold mt-0.5">
+                        {ps.status === 'active' ? 'Active Project' : 'Archived Project'}
+                      </span>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </div>
 
-            {/* Actions */}
-            <div className="pt-4 border-t border-[#EDEDED] flex justify-end gap-3">
-              <Link
-                to="/super-admin/admins"
-                className="px-4 py-2.5 bg-white border border-[#EDEDED] hover:bg-[#F7F7F7] text-[#0D0D0D] text-sm font-semibold rounded-xl transition-all"
-              >
+            <div className="pt-6 flex items-center justify-end gap-3 border-t border-[#EDEDED]">
+              <Link to="/super-admin/admins" className="px-5 py-2 bg-white border border-[#EDEDED] rounded-xl text-sm font-bold text-[#171717] hover:bg-[#F7F7F7] transition-colors">
                 Cancel
               </Link>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-6 py-2.5 bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] text-white text-sm font-bold rounded-xl shadow-md shadow-[#FF3D00]/20 hover:opacity-95 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {isSubmitting ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>Creating Admin Account...</span>
-                  </>
-                ) : (
-                  <span>Create Admin Account</span>
-                )}
+              <button type="submit" disabled={isSubmitting} className="px-5 py-2 bg-[#FF8A00] text-white rounded-xl text-sm font-bold shadow-md hover:bg-[#FF3D00] disabled:opacity-50 transition-colors flex items-center gap-2">
+                {isSubmitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
+                <span>{isSubmitting ? 'Creating...' : 'Create Administrator'}</span>
               </button>
             </div>
           </form>
@@ -676,518 +492,545 @@ export function AdminManagementPage() {
     );
   }
 
-  // MAIN ADMIN ROSTER LIST PAGE VIEW
   return (
-    <div className="space-y-6 text-left">
-      {/* Header Banner */}
-      <div className="bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="space-y-6 pb-12 text-[#171717]">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-sm">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-[#FF8A00]/10 to-[#FF3D00]/10 border border-[#FF8A00]/20 rounded-full text-xs font-bold text-[#FF3D00] mb-2">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            <span>Super Admin Core Module</span>
-          </div>
-          <h1 className="text-2xl font-bold text-[#0D0D0D]">Admin Management</h1>
-          <p className="text-sm text-[#9A9A9A] mt-0.5">
-            Create Admin accounts, allocate Problem Statements, toggle status, and manage Admin supervision.
-          </p>
+          <h1 className="text-2xl font-bold">Admin Management</h1>
+          <p className="text-sm text-[#737373] mt-1 max-w-2xl">Manage platform administrators, assign Problem Statements, monitor workload and control administrator access.</p>
         </div>
-
-        <Link
-          to="/super-admin/admins/create"
-          id="create-admin-account-btn"
-          className="px-4 py-2.5 bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] text-white text-sm font-bold rounded-xl shadow-md shadow-[#FF3D00]/20 hover:opacity-95 transition-all flex items-center gap-2 shrink-0 cursor-pointer"
-        >
+        <Link to="/super-admin/admins/create" className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#FF8A00] text-white text-sm font-bold rounded-xl shadow-md hover:bg-[#FF3D00] transition-colors whitespace-nowrap">
           <Plus className="h-4 w-4" />
-          <span>Create Admin Account</span>
+          <span>Create Admin</span>
         </Link>
       </div>
 
-      {/* Notifications */}
       {successMsg && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center justify-between text-sm font-medium animate-fadeIn">
-          <div className="flex items-center gap-2">
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-2 text-sm font-bold">
             <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
             <span>{successMsg}</span>
           </div>
-          <button onClick={() => setSuccessMsg(null)} className="text-emerald-600 hover:text-emerald-900 p-1">
+          <button onClick={() => setSuccessMsg(null)} className="text-emerald-700 hover:bg-emerald-100 p-1 rounded-lg" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
-      {errorMsg && (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl flex items-center justify-between text-sm font-medium animate-fadeIn">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
-            <span>{errorMsg}</span>
+      {errorMsg ? (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-8 flex flex-col items-center justify-center text-center shadow-sm">
+          <AlertCircle className="h-10 w-10 text-red-500 mb-4" />
+          <h3 className="text-lg font-bold text-red-800">Unable to load administrators</h3>
+          <p className="text-sm text-red-600 mt-1 mb-4">{errorMsg}</p>
+          <button onClick={() => fetchInitialData(false)} className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-bold rounded-xl shadow-sm hover:bg-red-700 transition-colors">
+            <RefreshCw className="h-4 w-4" />
+            <span>Retry</span>
+          </button>
+        </div>
+      ) : loading ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+            {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-24 bg-white border border-[#EDEDED] rounded-2xl shadow-sm animate-pulse" />)}
           </div>
-          <button onClick={() => setErrorMsg(null)} className="text-red-600 hover:text-red-900 p-1">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="h-64 bg-white border border-[#EDEDED] rounded-2xl shadow-sm animate-pulse" />
         </div>
-      )}
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white border border-[#EDEDED] rounded-2xl p-4 shadow-sm flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4">
-        {/* Search */}
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9A9A9A]" />
-          <input
-            type="text"
-            placeholder="Search Admins by full name, email, or mobile number..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-sm text-[#0D0D0D] placeholder-[#9A9A9A] focus:outline-none focus:border-[#FF8A00] focus:bg-white transition-all"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9A9A9A] hover:text-[#0D0D0D]"
-            >
-              <X className="h-4 w-4" />
-            </button>
+      ) : (
+        <>
+          {(kpis.unassigned > 0 || kpis.inactive > 0 || problemStatements.length > kpis.coveredPs) && (
+            <div className="flex flex-col sm:flex-row gap-3">
+              {kpis.unassigned > 0 && (
+                <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm shadow-sm font-medium">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{kpis.unassigned} {kpis.unassigned === 1 ? 'Admin has' : 'Admins have'} no assigned Problem Statements.</span>
+                </div>
+              )}
+              {kpis.inactive > 0 && (
+                <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-800 text-sm shadow-sm font-medium">
+                  <ShieldAlert className="h-4 w-4 shrink-0" />
+                  <span>{kpis.inactive} Inactive {kpis.inactive === 1 ? 'Admin' : 'Admins'}.</span>
+                </div>
+              )}
+              {problemStatements.length > kpis.coveredPs && (
+                <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-sm shadow-sm font-medium">
+                  <Info className="h-4 w-4 shrink-0" />
+                  <span>Problem Statements without Admins detected.</span>
+                </div>
+              )}
+            </div>
           )}
-        </div>
 
-        {/* Filter Controls */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Status Filter */}
-          <div className="flex items-center gap-2 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl px-3 py-1.5">
-            <Filter className="h-4 w-4 text-[#9A9A9A]" />
-            <span className="text-xs font-semibold text-[#9A9A9A]">Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-transparent text-xs font-bold text-[#0D0D0D] focus:outline-none cursor-pointer"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active Only</option>
-              <option value="inactive">Inactive Only</option>
-            </select>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <KpiCard title="Total Admins" value={kpis.total} />
+            <KpiCard title="Active Admins" value={kpis.active} />
+            <KpiCard title="Inactive Admins" value={kpis.inactive} />
+            <KpiCard title="Unassigned Admins" value={kpis.unassigned} />
+            <KpiCard title="Managed Interns" value={kpis.managedInterns} />
+            <KpiCard title="Problem Statement Coverage" value={`${kpis.coveredPs} / ${problemStatements.length}`} />
           </div>
 
-          {/* Problem Statement Filter */}
-          <div className="flex items-center gap-2 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl px-3 py-1.5">
-            <FileText className="h-4 w-4 text-[#9A9A9A]" />
-            <span className="text-xs font-semibold text-[#9A9A9A]">Statement:</span>
-            <select
-              value={psFilter}
-              onChange={(e) => setPsFilter(e.target.value)}
-              className="bg-transparent text-xs font-bold text-[#0D0D0D] focus:outline-none cursor-pointer max-w-[160px] truncate"
-            >
-              <option value="all">All Statements</option>
-              {problemStatements.map((ps) => (
-                <option key={ps.id} value={ps.id}>
-                  {ps.title}
-                </option>
-              ))}
-            </select>
-          </div>
+          <div className="bg-white border border-[#EDEDED] rounded-2xl p-4 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+            <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto flex-1">
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9A9A9A]" />
+                <input
+                  type="text"
+                  placeholder="Search admin..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-sm focus:outline-none focus:border-[#FF8A00] focus:bg-white transition-all shadow-inner"
+                />
+              </div>
 
-          {/* Sort By */}
-          <div className="flex items-center gap-2 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl px-3 py-1.5">
-            <ArrowUpDown className="h-4 w-4 text-[#9A9A9A]" />
-            <span className="text-xs font-semibold text-[#9A9A9A]">Sort:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="bg-transparent text-xs font-bold text-[#0D0D0D] focus:outline-none cursor-pointer"
-            >
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="name">Name (A-Z)</option>
-            </select>
-          </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full md:w-32 px-3 py-2 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-sm font-medium focus:outline-none focus:border-[#FF8A00] focus:bg-white cursor-pointer shadow-inner"
+                aria-label="Filter by Status"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
 
-          {/* Refresh Button */}
-          <button
-            onClick={fetchInitialData}
-            title="Refresh Roster"
-            className="p-2.5 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-[#9A9A9A] hover:text-[#0D0D0D] hover:bg-white transition-all cursor-pointer"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-[#FF8A00]' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Admin Table */}
-      <div className="bg-white border border-[#EDEDED] rounded-2xl shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-12 text-center space-y-3">
-            <RefreshCw className="h-8 w-8 text-[#FF8A00] animate-spin mx-auto" />
-            <p className="text-sm font-semibold text-[#0D0D0D]">Loading Admin Roster...</p>
-            <p className="text-xs text-[#9A9A9A]">Fetching admin profiles and allocations from Supabase</p>
-          </div>
-        ) : sortedAdmins.length === 0 ? (
-          <div className="p-12 text-center space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-[#F7F7F7] flex items-center justify-center mx-auto text-[#9A9A9A]">
-              <ShieldCheck className="h-6 w-6" />
-            </div>
-            <h3 className="text-base font-bold text-[#0D0D0D]">No Admin Accounts Found</h3>
-            <p className="text-xs text-[#9A9A9A] max-w-sm mx-auto">
-              {searchQuery || statusFilter !== 'all' || psFilter !== 'all'
-                ? 'No Admin accounts match your current filters. Try resetting search.'
-                : 'No Admin accounts have been created yet.'}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-[#F7F7F7] border-b border-[#EDEDED] text-xs font-bold text-[#9A9A9A] uppercase tracking-wider">
-                  <th className="py-4 px-6">Admin Name & Details</th>
-                  <th className="py-4 px-4">Status</th>
-                  <th className="py-4 px-4">Allocated Statements</th>
-                  <th className="py-4 px-4 text-center">Allocated Interns</th>
-                  <th className="py-4 px-4">Created Date</th>
-                  <th className="py-4 px-6 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#EDEDED] text-sm">
-                {sortedAdmins.map((item) => (
-                  <tr key={item.id} className="hover:bg-[#F7F7F7]/50 transition-colors group">
-                    {/* Name & Contact */}
-                    <td className="py-4 px-6 max-w-xs">
-                      <div className="font-bold text-[#0D0D0D] group-hover:text-[#FF8A00] transition-colors flex items-center gap-2">
-                        <span>{item.full_name}</span>
-                      </div>
-                      <p className="text-xs text-[#9A9A9A] mt-0.5 flex items-center gap-1 font-mono">
-                        <Mail className="h-3 w-3 shrink-0" />
-                        <span>{item.email}</span>
-                      </p>
-                      {item.mobile && (
-                        <p className="text-xs text-[#9A9A9A] mt-0.5 flex items-center gap-1">
-                          <Phone className="h-3 w-3 shrink-0" />
-                          <span>{item.mobile}</span>
-                        </p>
-                      )}
-                    </td>
-
-                    {/* Status Badge */}
-                    <td className="py-4 px-4 whitespace-nowrap">
-                      {item.account_status === 'active' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          Active
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-600 border border-gray-200 rounded-full text-xs font-bold">
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
-                          Inactive
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Allocated Statements List */}
-                    <td className="py-4 px-4 max-w-xs">
-                      {item.allocated_statements && item.allocated_statements.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {item.allocated_statements.map((ps) => (
-                            <span
-                              key={ps.id}
-                              className="px-2 py-0.5 bg-[#FF8A00]/10 text-[#FF8A00] border border-[#FF8A00]/20 rounded text-[11px] font-bold"
-                            >
-                              {ps.title}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-[#9A9A9A] italic">None Allocated</span>
-                      )}
-                    </td>
-
-                    {/* Allocated Interns Count */}
-                    <td className="py-4 px-4 text-center whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1 text-xs font-bold text-[#0D0D0D] bg-[#F7F7F7] px-2.5 py-1 rounded-lg border border-[#EDEDED]">
-                        <Users className="h-3.5 w-3.5 text-blue-500" />
-                        {item.allocated_interns_count || 0}
-                      </span>
-                    </td>
-
-                    {/* Created Date */}
-                    <td className="py-4 px-4 text-xs text-[#9A9A9A] whitespace-nowrap">
-                      {formatDate(item.created_at)}
-                    </td>
-
-                    {/* Actions */}
-                    <td className="py-4 px-6 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {/* View Admin */}
-                        <button
-                          onClick={() => {
-                            setSelectedAdmin(item);
-                            setModalMode('details');
-                          }}
-                          title="View Admin Details"
-                          className="p-2 text-[#9A9A9A] hover:text-[#0D0D0D] hover:bg-[#F7F7F7] rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-
-                        {/* Edit Admin & Allocations */}
-                        <button
-                          onClick={() => openEditModal(item)}
-                          title="Edit Admin & Allocations"
-                          className="p-2 text-[#9A9A9A] hover:text-[#FF8A00] hover:bg-[#FF8A00]/10 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-
-                        {/* Activate / Deactivate Toggle */}
-                        {item.account_status === 'active' ? (
-                          <button
-                            onClick={() => handleToggleStatusClick(item)}
-                            title="Deactivate Admin Account"
-                            className="px-2.5 py-1 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                          >
-                            <XCircle className="h-3.5 w-3.5" />
-                            <span>Deactivate</span>
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleToggleStatusClick(item)}
-                            title="Activate Admin Account"
-                            className="px-2.5 py-1 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            <span>Activate</span>
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+              <select
+                value={psFilter}
+                onChange={(e) => setPsFilter(e.target.value)}
+                className="w-full md:w-48 px-3 py-2 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-sm font-medium focus:outline-none focus:border-[#FF8A00] focus:bg-white cursor-pointer shadow-inner truncate"
+                aria-label="Filter by Problem Statement"
+              >
+                <option value="all">All Statements</option>
+                {problemStatements.map(ps => (
+                  <option key={ps.id} value={ps.id}>{ps.title}</option>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              </select>
 
-      {/* EDIT ADMIN & ALLOCATION MODAL */}
-      {modalMode === 'edit' && selectedAdmin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white border border-[#EDEDED] rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-[#EDEDED] flex justify-between items-center bg-[#F7F7F7]">
-              <div>
-                <h3 className="text-base font-bold text-[#0D0D0D]">Edit Admin Account</h3>
-                <p className="text-xs text-[#9A9A9A]">{selectedAdmin.email}</p>
-              </div>
-              <button onClick={closeModal} className="p-1 text-[#9A9A9A] hover:text-[#0D0D0D]">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleEditSubmit} className="p-6 space-y-4 text-left overflow-y-auto max-h-[75vh]">
-              <div>
-                <label className="block text-xs font-bold text-[#0D0D0D] uppercase tracking-wider mb-1.5">
-                  Full Name <span className="text-[#FF3D00]">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={editFormData.fullName}
-                  onChange={(e) => setEditFormData({ ...editFormData, fullName: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-sm text-[#0D0D0D] focus:outline-none focus:border-[#FF8A00] focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#0D0D0D] uppercase tracking-wider mb-1.5">
-                  Mobile Number <span className="text-[#FF3D00]">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={editFormData.mobile}
-                  onChange={(e) => setEditFormData({ ...editFormData, mobile: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-sm text-[#0D0D0D] focus:outline-none focus:border-[#FF8A00] focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#0D0D0D] uppercase tracking-wider mb-1.5">
-                  Account Status
-                </label>
+              <div className="flex items-center gap-2 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl px-3 py-2 shadow-inner">
+                <ArrowUpDown className="h-4 w-4 text-[#9A9A9A]" />
                 <select
-                  value={editFormData.accountStatus}
-                  onChange={(e) => setEditFormData({ ...editFormData, accountStatus: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-sm text-[#0D0D0D] focus:outline-none focus:border-[#FF8A00] focus:bg-white cursor-pointer"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="bg-transparent border-none text-sm font-medium focus:outline-none cursor-pointer p-0"
+                  aria-label="Sort Admins"
                 >
-                  <option value="active">Active (Access Granted)</option>
-                  <option value="inactive">Inactive (Access Disabled)</option>
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="name">Name A-Z</option>
                 </select>
               </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-bold text-[#0D0D0D] uppercase tracking-wider mb-2">
-                  Manage Problem Statement Allocations
-                </label>
-                <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto p-3 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl">
-                  {problemStatements.map((ps) => {
-                    const isChecked = editFormData.selectedPsIds.includes(ps.id);
-                    return (
-                      <label
-                        key={ps.id}
-                        className={`flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer text-xs ${
-                          isChecked
-                            ? 'bg-white border-[#FF8A00] text-[#0D0D0D] font-bold'
-                            : 'bg-white/50 border-[#EDEDED] text-[#9A9A9A]'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setEditFormData({
-                                ...editFormData,
-                                selectedPsIds: [...editFormData.selectedPsIds, ps.id],
-                              });
-                            } else {
-                              setEditFormData({
-                                ...editFormData,
-                                selectedPsIds: editFormData.selectedPsIds.filter((id) => id !== ps.id),
-                              });
-                            }
-                          }}
-                          className="rounded text-[#FF8A00]"
-                        />
-                        <span className="truncate">{ps.title}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-[#EDEDED] flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="px-4 py-2 bg-white border border-[#EDEDED] text-[#0D0D0D] text-sm font-semibold rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] text-white text-sm font-bold rounded-xl shadow-md shadow-[#FF3D00]/20 hover:opacity-95 flex items-center gap-2 disabled:opacity-50"
-                >
-                  {isSubmitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <span>Save Changes</span>}
-                </button>
-              </div>
-            </form>
+            <button 
+              onClick={() => fetchInitialData(false)}
+              className="p-2 bg-white border border-[#EDEDED] rounded-xl hover:bg-[#F7F7F7] text-[#737373] transition-colors shrink-0 shadow-sm"
+              title="Refresh Data"
+              aria-label="Refresh Table"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
           </div>
-        </div>
+
+          {admins.length === 0 ? (
+            <div className="bg-white border border-[#EDEDED] rounded-2xl p-12 shadow-sm flex flex-col items-center justify-center text-center">
+              <div className="h-16 w-16 bg-[#F7F7F7] rounded-full flex items-center justify-center mb-4">
+                <ShieldCheck className="h-8 w-8 text-[#9A9A9A]" />
+              </div>
+              <h3 className="text-xl font-bold text-[#171717] mb-2">No Administrators Found</h3>
+              <p className="text-[#737373] text-sm max-w-sm mb-6">Create your first administrator to begin managing interns and problem statements across the platform.</p>
+              <Link to="/super-admin/admins/create" className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#FF8A00] text-white font-bold rounded-xl shadow-md hover:bg-[#FF3D00] transition-colors">
+                <Plus className="h-4 w-4" />
+                <span>Create Admin</span>
+              </Link>
+            </div>
+          ) : sortedAdmins.length === 0 ? (
+            <div className="bg-white border border-[#EDEDED] rounded-2xl p-12 shadow-sm flex flex-col items-center justify-center text-center">
+              <Search className="h-8 w-8 text-[#9A9A9A] mb-4" />
+              <h3 className="text-lg font-bold text-[#171717] mb-1">No matching admins</h3>
+              <p className="text-[#737373] text-sm">Adjust your search or filters to see results.</p>
+            </div>
+          ) : (
+            <div className="bg-white border border-[#EDEDED] rounded-2xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-[#F7F7F7] border-b border-[#EDEDED] text-[#737373] text-xs uppercase tracking-wider font-bold">
+                    <tr>
+                      <th className="px-6 py-4">Admin</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Assigned Problem Statements</th>
+                      <th className="px-6 py-4">Managed Interns</th>
+                      <th className="px-6 py-4">Last Login</th>
+                      <th className="px-6 py-4">Created Date</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#EDEDED]">
+                    {sortedAdmins.map((admin) => {
+                      const initials = admin.full_name ? admin.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'AD';
+                      const isDropdownOpen = openDropdownId === admin.id;
+
+                      return (
+                        <tr key={admin.id} className="hover:bg-orange-50/20 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#FF8A00] to-[#FF3D00] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">
+                                {initials}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-bold text-[#171717]">{admin.full_name}</span>
+                                <span className="text-xs text-[#737373]">{admin.email}</span>
+                                {admin.mobile && <span className="text-xs text-[#9A9A9A] mt-0.5">{admin.mobile}</span>}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <StatusBadge status={admin.account_status} />
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-1.5 flex-wrap max-w-[250px]">
+                              {(admin.allocated_statements || []).length === 0 ? (
+                                <span className="text-xs text-[#9A9A9A] italic">Unassigned</span>
+                              ) : (
+                                <>
+                                  {(admin.allocated_statements || []).slice(0, 2).map(ps => (
+                                    <span key={ps.id} className="px-2 py-1 bg-[#F7F7F7] border border-[#EDEDED] text-[#171717] text-[10px] font-bold rounded-lg truncate max-w-[120px]">
+                                      {ps.title}
+                                    </span>
+                                  ))}
+                                  {(admin.allocated_statements || []).length > 2 && (
+                                    <span className="px-2 py-1 bg-white border border-[#EDEDED] text-[#737373] text-[10px] font-bold rounded-lg">
+                                      +{(admin.allocated_statements.length - 2)} More
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="inline-flex items-center justify-center px-2.5 py-1 bg-[#F7F7F7] border border-[#EDEDED] rounded-lg text-xs font-bold text-[#171717]">
+                              {admin.allocated_interns_count || 0}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-[#737373] font-medium text-xs">
+                            {formatDate(admin.last_sign_in_at)}
+                          </td>
+                          <td className="px-6 py-4 text-[#737373] font-medium text-xs">
+                            {formatDate(admin.created_at)}
+                          </td>
+                          <td className="px-6 py-4 text-right relative">
+                            <button 
+                              onClick={() => setOpenDropdownId(isDropdownOpen ? null : admin.id)}
+                              className="p-1.5 rounded-lg text-[#9A9A9A] hover:text-[#171717] hover:bg-[#F7F7F7] transition-colors focus:ring-2 focus:ring-[#FF8A00] outline-none"
+                              aria-haspopup="true"
+                              aria-expanded={isDropdownOpen}
+                              aria-label="Actions menu"
+                            >
+                              <MoreVertical className="h-5 w-5" />
+                            </button>
+                            
+                            {isDropdownOpen && (
+                              <>
+                                <div className="fixed inset-0 z-10" onClick={() => setOpenDropdownId(null)} role="presentation" aria-hidden="true" />
+                                <div className="absolute right-6 top-10 w-48 bg-white border border-[#EDEDED] rounded-xl shadow-lg z-20 py-1 overflow-hidden">
+                                  <DropdownItem icon={Eye} label="View Details" onClick={() => openDetailsDrawer(admin)} />
+                                  <DropdownItem icon={Edit} label="Edit Profile" onClick={() => openEditModal(admin)} />
+                                  <DropdownItem icon={FolderOpen} label="Assign Statements" onClick={() => openAssignModal(admin)} />
+                                  <div className="h-px bg-[#EDEDED] my-1" />
+                                  <DropdownItem 
+                                    icon={admin.account_status === 'active' ? XCircle : CheckCircle2} 
+                                    label={admin.account_status === 'active' ? 'Deactivate' : 'Reactivate'} 
+                                    onClick={() => handleToggleStatusClick(admin)} 
+                                  />
+                                  <DropdownItem icon={Trash2} label="Delete" destructive onClick={() => handleDeleteClick(admin)} />
+                                </div>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {/* VIEW ADMIN DETAILS MODAL */}
+      {/* Details Drawer */}
       {modalMode === 'details' && selectedAdmin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white border border-[#EDEDED] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-[#EDEDED] flex justify-between items-center bg-[#F7F7F7]">
-              <div>
-                <h3 className="text-base font-bold text-[#0D0D0D]">{selectedAdmin.full_name}</h3>
-                <span className="text-xs text-[#9A9A9A]">Admin Account Details</span>
-              </div>
-              <button onClick={closeModal} className="p-1 text-[#9A9A9A] hover:text-[#0D0D0D]">
+        <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={closeModal} role="presentation" aria-hidden="true" />
+          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+            <div className="p-6 border-b border-[#EDEDED] flex items-center justify-between bg-white shrink-0">
+              <h2 id="drawer-title" className="text-lg font-bold text-[#171717]">Admin Details</h2>
+              <button onClick={closeModal} className="p-2 rounded-full hover:bg-[#F7F7F7] text-[#737373] transition-colors" aria-label="Close details">
                 <X className="h-5 w-5" />
               </button>
             </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-full bg-gradient-to-br from-[#FF8A00] to-[#FF3D00] text-white flex items-center justify-center font-bold text-2xl shadow-md">
+                  {selectedAdmin.full_name ? selectedAdmin.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'AD'}
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-[#171717]">{selectedAdmin.full_name}</h3>
+                  <p className="text-sm text-[#737373] font-medium">Administrator</p>
+                  <div className="mt-1">
+                    <StatusBadge status={selectedAdmin.account_status} />
+                  </div>
+                </div>
+              </div>
 
-            <div className="p-6 space-y-4 text-left overflow-y-auto max-h-[75vh]">
-              <div className="p-4 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl space-y-2 text-xs">
-                <div className="flex justify-between border-b border-[#EDEDED] pb-2">
-                  <span className="font-semibold text-[#9A9A9A]">Email:</span>
-                  <span className="font-mono text-[#0D0D0D]">{selectedAdmin.email}</span>
+              <div className="bg-[#F7F7F7] border border-[#EDEDED] rounded-2xl p-4 space-y-3">
+                <div className="flex items-center gap-3 text-sm">
+                  <Mail className="h-4 w-4 text-[#9A9A9A]" />
+                  <span className="font-semibold text-[#171717]">{selectedAdmin.email}</span>
                 </div>
-                <div className="flex justify-between border-b border-[#EDEDED] pb-2">
-                  <span className="font-semibold text-[#9A9A9A]">Mobile:</span>
-                  <span className="text-[#0D0D0D]">{selectedAdmin.mobile || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between border-b border-[#EDEDED] pb-2">
-                  <span className="font-semibold text-[#9A9A9A]">Status:</span>
-                  <span className="font-bold text-[#0D0D0D] uppercase">{selectedAdmin.account_status}</span>
-                </div>
-                <div className="flex justify-between border-b border-[#EDEDED] pb-2">
-                  <span className="font-semibold text-[#9A9A9A]">Created Date:</span>
-                  <span className="text-[#0D0D0D]">{formatDate(selectedAdmin.created_at)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-semibold text-[#9A9A9A]">Allocated Interns Count:</span>
-                  <span className="font-bold text-[#0D0D0D]">{selectedAdmin.allocated_interns_count}</span>
+                {selectedAdmin.mobile && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <Phone className="h-4 w-4 text-[#9A9A9A]" />
+                    <span className="font-semibold text-[#171717]">{selectedAdmin.mobile}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 text-sm">
+                  <Calendar className="h-4 w-4 text-[#9A9A9A]" />
+                  <span className="font-medium text-[#737373]">Created: {formatDate(selectedAdmin.created_at)}</span>
                 </div>
               </div>
 
               <div>
-                <h4 className="text-xs font-bold text-[#9A9A9A] uppercase tracking-wider mb-2">
-                  Allocated Problem Statements
-                </h4>
-                <div className="space-y-1.5">
-                  {selectedAdmin.allocated_statements && selectedAdmin.allocated_statements.length > 0 ? (
-                    selectedAdmin.allocated_statements.map((ps) => (
-                      <div
-                        key={ps.id}
-                        className="p-2.5 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-xs font-bold text-[#0D0D0D] flex items-center justify-between"
-                      >
-                        <span>{ps.title}</span>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-bold text-[#171717] uppercase tracking-wider">Assigned Problem Statements</h4>
+                  <span className="inline-flex items-center justify-center px-2 py-0.5 bg-orange-50 text-[#FF8A00] text-xs font-bold rounded-full">
+                    {(selectedAdmin.allocated_statements || []).length}
+                  </span>
+                </div>
+                {(selectedAdmin.allocated_statements || []).length === 0 ? (
+                  <div className="p-4 border border-dashed border-[#EDEDED] rounded-xl text-center">
+                    <p className="text-sm text-[#9A9A9A] font-medium">No Problem Statements assigned.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedAdmin.allocated_statements.map(ps => (
+                      <div key={ps.id} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-[#EDEDED] rounded-lg shadow-sm">
+                        <FolderOpen className="h-3.5 w-3.5 text-[#FF8A00]" />
+                        <span className="text-xs font-bold text-[#171717]">{ps.title}</span>
                       </div>
-                    ))
-                  ) : (
-                    <p className="text-xs text-[#9A9A9A] italic">No Problem Statements allocated.</p>
-                  )}
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-sm font-bold text-[#171717] uppercase tracking-wider mb-3">Managed Interns</h4>
+                <div className="p-4 bg-white border border-[#EDEDED] rounded-xl shadow-sm flex items-center justify-between">
+                  <span className="text-sm font-semibold text-[#737373]">Total Interns</span>
+                  <span className="text-xl font-black text-[#171717]">{selectedAdmin.allocated_interns_count || 0}</span>
                 </div>
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-[#EDEDED] bg-[#F7F7F7] flex justify-end">
-              <button
-                onClick={closeModal}
-                className="px-4 py-2 bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] text-white text-sm font-bold rounded-xl"
-              >
-                Close
+            <div className="p-6 border-t border-[#EDEDED] bg-[#F7F7F7] shrink-0 flex flex-col gap-2">
+              <button onClick={() => openAssignModal(selectedAdmin)} className="w-full py-2.5 bg-[#FF8A00] text-white rounded-xl text-sm font-bold shadow-md hover:bg-[#FF3D00] transition-colors">
+                Assign Problem Statements
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => openEditModal(selectedAdmin)} className="flex-1 py-2.5 bg-white border border-[#EDEDED] text-[#171717] rounded-xl text-sm font-bold hover:bg-[#F7F7F7] transition-colors">
+                  Edit Profile
+                </button>
+                <button onClick={() => { closeModal(); handleToggleStatusClick(selectedAdmin); }} className="flex-1 py-2.5 bg-white border border-[#EDEDED] text-[#171717] rounded-xl text-sm font-bold hover:bg-[#F7F7F7] transition-colors">
+                  {selectedAdmin.account_status === 'active' ? 'Deactivate' : 'Reactivate'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit & Assign Modal */}
+      {(modalMode === 'edit' || modalMode === 'allocations') && selectedAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeModal} role="presentation" aria-hidden="true" />
+          <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-[#EDEDED] flex justify-between items-center shrink-0">
+              <h2 id="modal-title" className="text-xl font-bold text-[#171717]">
+                {modalMode === 'edit' ? 'Edit Administrator Profile' : 'Assign Problem Statements'}
+              </h2>
+              <button onClick={closeModal} className="p-1.5 rounded-lg hover:bg-[#F7F7F7] text-[#9A9A9A] transition-colors" aria-label="Close modal">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto custom-scrollbar">
+              <form id="admin-action-form" onSubmit={handleEditSubmit} className="space-y-5">
+                {modalMode === 'edit' && (
+                  <AdminProfileForm formData={editFormData} setFormData={setEditFormData} formErrors={formErrors} mode="edit" />
+                )}
+                {modalMode === 'allocations' && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-[#737373] mb-4">
+                      Select the problem statements that <span className="font-bold text-[#171717]">{selectedAdmin.full_name}</span> will oversee.
+                    </p>
+                    <div className="border border-[#EDEDED] rounded-xl overflow-hidden max-h-[300px] overflow-y-auto custom-scrollbar bg-[#F7F7F7]">
+                      {problemStatements.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-[#9A9A9A]">No Problem Statements available.</div>
+                      ) : (
+                        <div className="divide-y divide-[#EDEDED]">
+                          {problemStatements.map(ps => (
+                            <label key={ps.id} className="flex items-center gap-3 p-3 hover:bg-white cursor-pointer transition-colors group">
+                              <input
+                                type="checkbox"
+                                checked={editFormData.selectedPsIds.includes(ps.id)}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setEditFormData(prev => ({
+                                    ...prev, 
+                                    selectedPsIds: checked ? [...prev.selectedPsIds, ps.id] : prev.selectedPsIds.filter(id => id !== ps.id)
+                                  }));
+                                }}
+                                className="h-4 w-4 text-[#FF8A00] border-[#EDEDED] rounded focus:ring-[#FF8A00]"
+                              />
+                              <div className="flex flex-col">
+                                <span className="text-sm font-bold text-[#171717] group-hover:text-[#FF8A00] transition-colors">{ps.title}</span>
+                                <span className="text-[10px] uppercase font-bold text-[#9A9A9A] mt-0.5">{ps.status === 'active' ? 'Active' : 'Archived'}</span>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </form>
+            </div>
+            
+            <div className="p-5 border-t border-[#EDEDED] bg-[#F7F7F7] shrink-0 flex items-center justify-end gap-3 rounded-b-2xl">
+              <button onClick={closeModal} className="px-4 py-2 bg-white border border-[#EDEDED] rounded-xl text-sm font-bold text-[#171717] hover:bg-[#F7F7F7] transition-colors">
+                Cancel
+              </button>
+              <button form="admin-action-form" type="submit" disabled={isSubmitting} className="px-6 py-2 bg-[#FF8A00] text-white rounded-xl text-sm font-bold shadow-md hover:bg-[#FF3D00] disabled:opacity-50 transition-colors flex items-center gap-2">
+                {isSubmitting && <RefreshCw className="h-4 w-4 animate-spin" />}
+                <span>Save Changes</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* CONFIRM ACTION DIALOG */}
+      {/* Confirm Action Modal */}
       {confirmAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white border border-[#EDEDED] rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 text-left">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 shrink-0">
-                <ShieldAlert className="h-6 w-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[#0D0D0D]">{confirmAction.title}</h3>
-                <p className="text-xs text-[#9A9A9A]">Super Admin verification</p>
-              </div>
+        <div className="fixed inset-0 z-[60] flex justify-center items-center p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setConfirmAction(null)} role="presentation" aria-hidden="true" />
+          <div className="relative bg-white w-full max-w-sm rounded-2xl shadow-xl p-6 text-center animate-in zoom-in-95 duration-200">
+            <div className={`mx-auto w-12 h-12 rounded-full mb-4 flex items-center justify-center ${confirmAction.newStatus === 'deleted' ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-500'}`}>
+              <AlertCircle className="h-6 w-6" />
             </div>
-
-            <p className="text-sm text-[#0D0D0D] bg-[#F7F7F7] p-3.5 rounded-xl border border-[#EDEDED] leading-relaxed">
-              {confirmAction.message}
-            </p>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setConfirmAction(null)}
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-white border border-[#EDEDED] text-[#0D0D0D] text-sm font-semibold rounded-xl"
-              >
+            <h3 id="confirm-title" className="text-xl font-bold text-[#171717] mb-2">{confirmAction.title}</h3>
+            <p className="text-[#737373] text-sm mb-6">{confirmAction.message}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmAction(null)} className="flex-1 py-2.5 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-sm font-bold text-[#171717] hover:bg-[#EDEDED] transition-colors">
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={executeToggleStatus}
-                disabled={isSubmitting}
-                className="px-5 py-2 bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] text-white text-sm font-bold rounded-xl shadow-md shadow-[#FF3D00]/20 hover:opacity-95 flex items-center gap-2 disabled:opacity-50"
-              >
-                {isSubmitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <span>Confirm Action</span>}
+              <button onClick={executeConfirmAction} disabled={isSubmitting} className={`flex-1 py-2.5 rounded-xl text-sm font-bold text-white shadow-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50 ${confirmAction.newStatus === 'deleted' ? 'bg-red-600 hover:bg-red-700' : 'bg-[#FF8A00] hover:bg-[#FF3D00]'}`}>
+                {isSubmitting && <RefreshCw className="h-4 w-4 animate-spin" />}
+                <span>Confirm</span>
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// -------------------------------------------------------------
+// Helper Components
+// -------------------------------------------------------------
+
+function AdminProfileForm({ formData, setFormData, formErrors, mode }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label className="block text-xs font-bold text-[#171717] uppercase tracking-wider mb-1.5">
+          Full Name <span className="text-[#FF8A00]">*</span>
+        </label>
+        <input
+          type="text"
+          placeholder="e.g. Dr. Rajesh Kulkarni"
+          value={formData.fullName}
+          onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+          className={`w-full px-3.5 py-2.5 bg-white border ${formErrors.fullName ? 'border-red-500 bg-red-50/20' : 'border-[#EDEDED]'} rounded-xl text-sm text-[#171717] focus:outline-none focus:border-[#FF8A00] transition-all shadow-sm`}
+        />
+        {formErrors.fullName && <p className="text-xs font-medium text-red-600 mt-1 flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" /><span>{formErrors.fullName}</span></p>}
+      </div>
+
+      <div>
+        <label className="block text-xs font-bold text-[#171717] uppercase tracking-wider mb-1.5">
+          Mobile Number <span className="text-[#FF8A00]">*</span>
+        </label>
+        <input
+          type="text"
+          placeholder="e.g. +91 9823011223"
+          value={formData.mobile}
+          onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+          className={`w-full px-3.5 py-2.5 bg-white border ${formErrors.mobile ? 'border-red-500 bg-red-50/20' : 'border-[#EDEDED]'} rounded-xl text-sm text-[#171717] focus:outline-none focus:border-[#FF8A00] transition-all shadow-sm`}
+        />
+        {formErrors.mobile && <p className="text-xs font-medium text-red-600 mt-1 flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" /><span>{formErrors.mobile}</span></p>}
+      </div>
+
+      {mode === 'edit' && (
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-bold text-[#171717] uppercase tracking-wider mb-1.5">
+            Account Status <span className="text-[#FF8A00]">*</span>
+          </label>
+          <select
+            value={formData.accountStatus}
+            onChange={(e) => setFormData({ ...formData, accountStatus: e.target.value })}
+            className="w-full px-3.5 py-2.5 bg-white border border-[#EDEDED] rounded-xl text-sm text-[#171717] focus:outline-none focus:border-[#FF8A00] transition-all shadow-sm cursor-pointer"
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
         </div>
       )}
     </div>
+  );
+}
+
+function KpiCard({ title, value }) {
+  return (
+    <div className="bg-white border border-[#EDEDED] rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+      <span className="text-[11px] font-bold text-[#9A9A9A] uppercase tracking-wider mb-2">{title}</span>
+      <span className="text-2xl font-black text-[#171717]">{value}</span>
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    active: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Active' },
+    inactive: { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', label: 'Inactive' },
+    suspended: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', label: 'Suspended' },
+    deleted: { color: 'text-[#9A9A9A]', bg: 'bg-[#F7F7F7]', border: 'border-[#EDEDED]', label: 'Deleted' },
+  };
+  const cfg = map[status] || map.inactive;
+  
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${cfg.bg} ${cfg.color} ${cfg.border}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function DropdownItem({ icon: Icon, label, onClick, destructive }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus:bg-gray-50 ${destructive ? 'text-red-600 hover:bg-red-50' : 'text-[#171717] hover:bg-[#F7F7F7] hover:text-[#FF8A00]'}`}
+    >
+      <Icon className="h-4 w-4" />
+      <span>{label}</span>
+    </button>
   );
 }

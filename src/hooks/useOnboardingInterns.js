@@ -11,7 +11,7 @@ export function useOnboardingInterns() {
   return useQuery({
     queryKey: ['super-admin-onboarding-interns'],
     queryFn: async () => {
-      const result = await fetchAllOnboardingInterns();
+      const result = await fetchOnboardingInterns();
       return result;
     },
     staleTime: 30000,
