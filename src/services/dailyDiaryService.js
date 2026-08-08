@@ -1,221 +1,196 @@
 import { supabase } from '../lib/supabase';
 
-// Helper to format date in Asia/Kolkata timezone (YYYY-MM-DD)
-export function getKolkataDateString(d = new Date()) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(d);
-}
-
-// Check if a date string matches current server date in Asia/Kolkata
-export function isEditableToday(entryDateStr) {
-  if (!entryDateStr) return false;
-  const todayKolkata = getKolkataDateString();
-  return entryDateStr === todayKolkata;
+/**
+ * Get date string formatted in IST / Kolkata timezone (YYYY-MM-DD)
+ */
+export function getKolkataDateString(date = new Date()) {
+  const d = new Date(date);
+  const offset = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(d.getTime() + offset);
+  return istDate.toISOString().split('T')[0];
 }
 
 /**
- * Fetch intern's daily diary entries ordered by date descending
+ * Check if diary entry is editable today
+ */
+export function isEditableToday(diaryDate) {
+  const today = getKolkataDateString();
+  return diaryDate === today;
+}
+
+/**
+ * Fetch daily diaries for current intern user
  */
 export async function fetchDailyDiaries(userId) {
   try {
     const { data, error } = await supabase
-      .from('daily_diary_entries')
+      .from('daily_diaries')
       .select('*')
-      .eq('intern_id', userId)
-      .order('entry_date', { ascending: false });
+      .order('diary_date', { ascending: false });
 
     if (error) {
-      throw error;
+      console.warn('[DailyDiaryService] Query notice:', error.message);
+      return [];
     }
 
-    return data && data.length > 0 ? data.map(mapDiaryFields) : [];
+    return data || [];
   } catch (err) {
-    console.error('[DailyDiaryService] Error fetching daily diaries:', err);
-    throw err;
+    console.error('[DailyDiaryService] Error fetching intern diaries:', err);
+    return [];
   }
 }
 
 /**
- * Save or update today's single plain-text diary using secure RPC save_daily_diary
+ * Save / Create / Update Intern Daily Diary
  */
-export async function saveDailyDiary({ diaryText, saveType = 'submitted' }) {
+export async function saveDailyDiary(diaryData) {
   try {
-    const trimmed = (diaryText || '').trim();
-
-    if (trimmed.length < 20) {
-      return { success: false, message: 'Daily diary summary must be at least 20 characters.' };
-    }
-    if (trimmed.length > 3000) {
-      return { success: false, message: 'Daily diary summary cannot exceed 3000 characters.' };
-    }
-
-    const todayKolkata = getKolkataDateString();
-    const statusVal = saveType === 'draft' ? 'draft' : 'submitted';
-
-    // 1. Try RPC first
-    const { data: rpcData, error: rpcError } = await supabase.rpc('save_daily_diary', {
-      p_diary_text: trimmed,
-      p_save_type: saveType
-    });
-
-    if (!rpcError && rpcData) {
-      return rpcData;
-    }
-
-    console.warn('[DailyDiaryService] RPC save_daily_diary unavailable or unmigrated remotely. Executing direct table upsert fallback:', rpcError?.message);
-
-    // 2. Direct Supabase Table Upsert Fallback (matches exact schema definition)
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
-    
-    const userId = userData?.user?.id;
-    if (!userId) {
-      throw new Error('Not authenticated');
-    }
-
-    // Check existing record for today
-    const { data: existing, error: existErr } = await supabase
-      .from('daily_diary_entries')
-      .select('*')
-      .eq('intern_id', userId)
-      .eq('entry_date', todayKolkata)
-      .maybeSingle();
-      
-    if (existErr) throw existErr;
-
-    if (existing) {
-      const { data: updated, error: updateErr } = await supabase
-        .from('daily_diary_entries')
-        .update({
-          work_summary: trimmed,
-          status: statusVal,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', existing.id)
-        .select()
-        .single();
-
-      if (updateErr) throw updateErr;
-
-      return {
-        success: true,
-        diary_id: updated.id,
-        status: statusVal,
-        diary_date: todayKolkata,
-        message: saveType === 'draft' ? "Today's diary draft has been saved." : "Today's diary has been submitted successfully."
-      };
-    } else {
-      const { data: inserted, error: insertErr } = await supabase
-        .from('daily_diary_entries')
-        .insert([{
-          intern_id: userId,
-          entry_date: todayKolkata,
-          work_summary: trimmed,
-          status: statusVal,
-          updated_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-
-      if (insertErr) throw insertErr;
-
-      return {
-        success: true,
-        diary_id: inserted.id,
-        status: statusVal,
-        diary_date: todayKolkata,
-        message: saveType === 'draft' ? "Today's diary draft has been saved." : "Today's diary has been submitted successfully."
-      };
-    }
-  } catch (err) {
-    console.error('[DailyDiaryService] Save error:', err);
-    throw err;
-  }
-}
-
-/**
- * Delete today's daily diary using secure RPC delete_daily_diary
- */
-export async function deleteDailyDiary(diaryId) {
-  try {
-    const todayKolkata = getKolkataDateString();
-
-    // 1. Try RPC first
-    const { data: rpcData, error: rpcError } = await supabase.rpc('delete_daily_diary', {
-      p_diary_id: diaryId
-    });
-
-    if (!rpcError && rpcData) {
-      return rpcData;
-    }
-
-    console.warn('[DailyDiaryService] RPC delete_daily_diary unavailable or unmigrated remotely. Executing direct table delete fallback:', rpcError?.message);
-
-    // 2. Direct Supabase Table Delete Fallback (matches exact schema definition)
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
-
-    const userId = userData?.user?.id;
-    if (!userId) {
-      throw new Error('Not authenticated');
-    }
-
-    // Fetch target entry to verify date in Asia/Kolkata
-    const { data: targetEntry, error: fetchErr } = await supabase
-      .from('daily_diary_entries')
-      .select('*')
-      .eq('id', diaryId)
-      .eq('intern_id', userId)
-      .maybeSingle();
-
-    if (fetchErr) throw fetchErr;
-
-    if (!targetEntry) {
-      return {
-        success: false,
-        code: 'NOT_FOUND',
-        message: 'Diary entry not found.'
-      };
-    }
-
-    if (targetEntry.entry_date !== todayKolkata) {
-      return {
-        success: false,
-        code: 'DELETE_NOT_ALLOWED',
-        message: "Only today's diary can be deleted. Previous-day entries are permanent records."
-      };
-    }
-
-    const { error: deleteErr } = await supabase
-      .from('daily_diary_entries')
-      .delete()
-      .eq('id', diaryId);
-
-    if (deleteErr) throw deleteErr;
-
-    return {
-      success: true,
-      code: 'DELETED',
-      message: "Today's daily diary has been deleted."
+    const todayStr = getKolkataDateString();
+    const payload = {
+      diary_date: diaryData.diary_date || todayStr,
+      title: diaryData.title || '',
+      tasks_completed: diaryData.tasks_completed || '',
+      challenges: diaryData.challenges || '',
+      plan_tomorrow: diaryData.plan_tomorrow || '',
+      status: diaryData.status || 'Submitted'
     };
+
+    if (diaryData.id) {
+      const { data, error } = await supabase
+        .from('daily_diaries')
+        .update(payload)
+        .eq('id', diaryData.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { success: true, data };
+    } else {
+      const { data, error } = await supabase
+        .from('daily_diaries')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { success: true, data };
+    }
   } catch (err) {
-    console.error('[DailyDiaryService] Delete error:', err);
-    throw err;
+    console.error('[DailyDiaryService] Error saving diary:', err);
+    return { success: false, message: err.message || 'Failed to save daily diary.' };
   }
 }
 
-function mapDiaryFields(d) {
-  return {
-    id: d.id,
-    diary_date: d.entry_date,
-    diary_text: d.work_summary,
-    status: d.status,
-    admin_feedback: d.review_note || null,
-    submitted_at: d.updated_at || d.created_at,
-    created_at: d.created_at
-  };
+/**
+ * Delete intern daily diary entry
+ */
+export async function deleteDailyDiary(id) {
+  try {
+    const { error } = await supabase
+      .from('daily_diaries')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+/**
+ * Fetch daily diaries for Super Admin (Platform-wide)
+ */
+export async function fetchDailyDiariesForSuperAdmin(filters = {}) {
+  try {
+    let query = supabase
+      .from('daily_diaries')
+      .select(`
+        *,
+        profiles:user_id (id, full_name, email, avatar_url),
+        problem_statements:problem_statement_id (id, title)
+      `)
+      .order('diary_date', { ascending: false });
+
+    if (filters.search) {
+      query = query.ilike('title', `%${filters.search}%`);
+    }
+
+    if (filters.status && filters.status !== 'all') {
+      query = query.eq('status', filters.status);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.warn('[DailyDiaryService] Database query notice:', error.message);
+      return [];
+    }
+
+    return data || [];
+  } catch (err) {
+    console.error('[DailyDiaryService] Error fetching super admin diaries:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch daily diaries for Admin (Filtered by allocated problem statement IDs)
+ */
+export async function fetchDailyDiariesForAdmin(problemStatementIds = [], filters = {}) {
+  try {
+    if (!problemStatementIds || problemStatementIds.length === 0) {
+      return [];
+    }
+
+    let query = supabase
+      .from('daily_diaries')
+      .select(`
+        *,
+        profiles:user_id (id, full_name, email, avatar_url),
+        problem_statements:problem_statement_id (id, title)
+      `)
+      .in('problem_statement_id', problemStatementIds)
+      .order('diary_date', { ascending: false });
+
+    if (filters.search) {
+      query = query.ilike('title', `%${filters.search}%`);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.warn('[DailyDiaryService] Admin query notice:', error.message);
+      return [];
+    }
+
+    return data || [];
+  } catch (err) {
+    console.error('[DailyDiaryService] Error fetching admin diaries:', err);
+    return [];
+  }
+}
+
+/**
+ * Review / Add feedback to an intern's daily diary (Admin & Super Admin)
+ */
+export async function reviewDailyDiary(diaryId, reviewData = {}) {
+  try {
+    const { data, error } = await supabase
+      .from('daily_diaries')
+      .update({
+        status: reviewData.status || 'Reviewed',
+        admin_feedback: reviewData.feedback || '',
+        reviewed_at: new Date().toISOString()
+      })
+      .eq('id', diaryId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return { success: true, data };
+  } catch (err) {
+    console.error('[DailyDiaryService] Error reviewing diary:', err);
+    return { success: false, message: err.message || 'Failed to review diary' };
+  }
 }

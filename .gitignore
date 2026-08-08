@@ -33,3 +33,4 @@ dist-ssr
 supabase/.temp/
 scratch/
 audit.js
+.npm-cache/

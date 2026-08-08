@@ -38,9 +38,13 @@ const InternManagementPage = lazy(() => import('../pages/super-admin/InternManag
 const LearningManagementPage = lazy(() => import('../pages/super-admin/LearningManagementPage').then(m => ({ default: m.LearningManagementPage })));
 const OperationsManagementPage = lazy(() => import('../pages/super-admin/OperationsManagementPage').then(m => ({ default: m.OperationsManagementPage })));
 const SuperAdminAttendanceLocationManagement = lazy(() => import('../pages/super-admin/SuperAdminAttendanceLocationManagement').then(m => ({ default: m.SuperAdminAttendanceLocationManagement })));
+const SuperAdminProductivityPage = lazy(() => import('../pages/super-admin/SuperAdminProductivityPage').then(m => ({ default: m.SuperAdminProductivityPage })));
 const ProblemStatementManagementPage = lazy(() => import('../pages/super-admin/ProblemStatementManagementPage').then(m => ({ default: m.ProblemStatementManagementPage })));
 const AdminManagementPage = lazy(() => import('../pages/super-admin/AdminManagementPage').then(m => ({ default: m.AdminManagementPage })));
 const AdminDashboardPage = lazy(() => import('../pages/admin/AdminDashboardPage').then(m => ({ default: m.AdminDashboardPage })));
+const AdminProductivityPage = lazy(() => import('../pages/admin/AdminProductivityPage').then(m => ({ default: m.AdminProductivityPage })));
+const AdminAttendanceReviewPage = lazy(() => import('../pages/admin/AdminAttendanceReviewPage').then(m => ({ default: m.AdminAttendanceReviewPage })));
+const AdminDailyDiaryReviewPage = lazy(() => import('../pages/admin/AdminDailyDiaryReviewPage').then(m => ({ default: m.AdminDailyDiaryReviewPage })));
 const SharedLeaderboardPage = lazy(() => import('../pages/shared/SharedLeaderboardPage').then(m => ({ default: m.SharedLeaderboardPage })));
 const SharedFeedbackPage = lazy(() => import('../pages/shared/SharedFeedbackPage').then(m => ({ default: m.SharedFeedbackPage })));
 const SharedAnnouncementsPage = lazy(() => import('../pages/shared/SharedAnnouncementsPage').then(m => ({ default: m.SharedAnnouncementsPage })));
@@ -154,7 +158,9 @@ export function AppRouter() {
             <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
             <Route path="/admin/interns" element={<ModulePlaceholder title="Onboarding Interns" role="Admin" />} />
             <Route path="/admin/active-interns" element={<ModulePlaceholder title="Allocated Active Interns" role="Admin" />} />
-            <Route path="/admin/attendance" element={<ModulePlaceholder title="Attendance Review" role="Admin" />} />
+            <Route path="/admin/productivity" element={<AdminProductivityPage />} />
+            <Route path="/admin/attendance" element={<AdminAttendanceReviewPage />} />
+            <Route path="/admin/daily-diary" element={<AdminDailyDiaryReviewPage />} />
             <Route path="/admin/leaderboard" element={<SharedLeaderboardPage />} />
             <Route path="/admin/announcements" element={<SharedAnnouncementsPage />} />
             <Route path="/admin/feedback" element={<SharedFeedbackPage />} />
@@ -214,7 +220,9 @@ export function AppRouter() {
             <Route path="/super-admin/operations/pending-work" element={<OperationsManagementPage />} />
             <Route path="/super-admin/operations/leave" element={<OperationsManagementPage />} />
 
-            {/* Engagement */}
+            {/* Productivity & Engagement */}
+            <Route path="/super-admin/productivity" element={<SuperAdminProductivityPage />} />
+            <Route path="/super-admin/engagement" element={<SuperAdminProductivityPage />} />
             <Route path="/super-admin/engagement/community" element={<Navigate to="/super-admin/community" replace />} />
             <Route path="/super-admin/community" element={<SharedCommunityPage />} />
             <Route path="/super-admin/engagement/ai-posts" element={<ModulePlaceholder title="AI Post Monitoring" role="Super Admin" />} />
