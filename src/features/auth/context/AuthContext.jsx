@@ -36,7 +36,25 @@ export function AuthProvider({ children }) {
       setUser(authUser);
 
       // Consolidated Single RPC Call for User Context
-      const { data: ctxData, error: ctxErr } = await supabase.rpc('get_current_user_context');
+      let ctxData = null;
+      let ctxErr = null;
+      try {
+        const res = await supabase.rpc('get_current_user_context');
+        ctxData = res.data;
+        ctxErr = res.error;
+      } catch (rpcError) {
+        console.warn('RPC get_current_user_context notice:', rpcError.message);
+      }
+
+      if (ctxErr && ctxErr.message?.includes('session_not_found')) {
+        console.warn('Stale session detected. Clearing invalid auth token.');
+        await supabase.auth.signOut().catch(() => {});
+        setUser(null);
+        setProfile(null);
+        setRole(null);
+        setLoading(false);
+        return null;
+      }
 
       if (!ctxErr && ctxData && ctxData.authenticated) {
         if (ctxData.profile) setProfile(ctxData.profile);

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AdminAttendanceReviewPage } from './AdminAttendanceReviewPage';
 import { AdminDailyDiaryReviewPage } from './AdminDailyDiaryReviewPage';
+import { AdminPendingWorkReviewPage } from './AdminPendingWorkReviewPage';
 import { Calendar, FileText, Clock, Award, ShieldCheck } from 'lucide-react';
 
 export function AdminProductivityPage() {
@@ -50,13 +51,7 @@ export function AdminProductivityPage() {
       <div>
         {activeTab === 'attendance' && <AdminAttendanceReviewPage />}
         {activeTab === 'daily-diary' && <AdminDailyDiaryReviewPage />}
-        {activeTab === 'pending-work' && (
-          <div className="bg-white border border-[#EDEDED] rounded-2xl p-8 shadow-sm text-center space-y-2">
-            <Clock className="h-8 w-8 text-[#FF8A00] mx-auto" />
-            <h3 className="text-base font-bold text-[#0D0D0D]">Pending Work Deliverables Queue</h3>
-            <p className="text-xs text-[#9A9A9A]">3 submitted intern deliverables awaiting your review.</p>
-          </div>
-        )}
+        {activeTab === 'pending-work' && <AdminPendingWorkReviewPage />}
       </div>
     </div>
   );

@@ -172,8 +172,8 @@ export function AdminAttendanceReviewPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EDEDED] text-[#0D0D0D]">
-              {filteredRecords.map((item) => (
-                <tr key={item.id} className="hover:bg-[#F9F9F9] transition-colors">
+              {filteredRecords.map((item, idx) => (
+                <tr key={item.id ? `${item.id}-${idx}` : `att-row-${idx}`} className="hover:bg-[#F9F9F9] transition-colors">
                   <td className="px-6 py-4">
                     <div className="font-bold text-[#0D0D0D]">{item.internName}</div>
                     <div className="text-[11px] text-[#9A9A9A]">{item.email}</div>
