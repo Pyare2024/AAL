@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../../../lib/supabase';
-import { Mail, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
+import { Mail, Lock, ArrowRight, AlertCircle, Loader2, ServerOff, ShieldCheck } from 'lucide-react';
 import { validateEmail } from '../validators/authValidators';
 
 export function Login() {
@@ -13,6 +13,18 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  const isConfigured = isSupabaseConfigured();
+
+  const handleDemoLogin = (role) => {
+    if (role === 'super_admin') {
+      navigate('/super-admin/dashboard', { replace: true });
+    } else if (role === 'admin') {
+      navigate('/admin/dashboard', { replace: true });
+    } else {
+      navigate('/intern/dashboard', { replace: true });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -55,8 +67,15 @@ export function Login() {
         navigate('/intern/dashboard', { replace: true });
       }
     } catch (err) {
-      console.error(err);
-      setError(err.message || 'Invalid email or password. Please try again.');
+      console.error('Login error:', err);
+      const errMsg = err?.message || String(err);
+      if (errMsg.toLowerCase().includes('failed to fetch') || errMsg.toLowerCase().includes('fetch failed')) {
+        setError(
+          'Unable to connect to Supabase backend (Failed to fetch). Please ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are correctly set in your .env file and your Supabase project/server is running.'
+        );
+      } else {
+        setError(errMsg || 'Invalid email or password. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -64,6 +83,41 @@ export function Login() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {!isConfigured && (
+        <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2 text-xs text-amber-700">
+          <div className="flex items-center gap-2 font-bold text-amber-800">
+            <ServerOff className="h-4 w-4 shrink-0 text-amber-600" />
+            <span>Supabase Not Configured (.env missing)</span>
+          </div>
+          <p className="text-[11px] leading-relaxed text-amber-700/90">
+            You need to add your Supabase credentials to a <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">.env</code> file.
+          </p>
+          <div className="pt-1 flex flex-wrap gap-1.5">
+            <span className="text-[10px] text-amber-800 font-semibold self-center">Explore Dashboards (Demo Mode):</span>
+            <button
+              type="button"
+              onClick={() => handleDemoLogin('intern')}
+              className="px-2 py-1 bg-amber-600 text-white font-medium rounded text-[10px] hover:bg-amber-700 transition"
+            >
+              Intern
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDemoLogin('admin')}
+              className="px-2 py-1 bg-amber-600 text-white font-medium rounded text-[10px] hover:bg-amber-700 transition"
+            >
+              Admin
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDemoLogin('super_admin')}
+              className="px-2 py-1 bg-amber-600 text-white font-medium rounded text-[10px] hover:bg-amber-700 transition"
+            >
+              Super Admin
+            </button>
+          </div>
+        </div>
+      )}
       {error && (
         <div className="p-3.5 bg-[#FF3D00]/10 border border-[#FF3D00]/20 rounded-xl flex items-start gap-2.5 text-xs font-semibold text-[#FF3D00]">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />

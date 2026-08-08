@@ -1,8 +1,8 @@
 import { supabase } from '../lib/supabase';
-import { 
-  synchronizeAllOnboardingStatuses,
-  getCurrentOnboardingStep
-} from '../utils/onboardingUtils';
+import {
+  getCurrentOnboardingStep,
+  calculateCompletionPercentage,
+} from '../utils/onboardingProgressUtils';
 
 /**
  * Service for Super Admin Onboarding Data Fetching & Normalization.

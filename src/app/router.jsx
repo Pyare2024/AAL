@@ -18,6 +18,8 @@ const OnboardingQuestionnaire = lazy(() => import('../features/onboarding/pages/
 const OnboardingLearning = lazy(() => import('../features/onboarding/pages/OnboardingLearning').then(m => ({ default: m.OnboardingLearning })));
 const OnboardingActivities = lazy(() => import('../features/onboarding/pages/OnboardingActivities').then(m => ({ default: m.OnboardingActivities })));
 const OnboardingInterview = lazy(() => import('../features/onboarding/pages/OnboardingInterview').then(m => ({ default: m.OnboardingInterview })));
+const OnboardingAllocation = lazy(() => import('../features/onboarding/pages/OnboardingAllocation').then(m => ({ default: m.OnboardingAllocation })));
+
 
 const InternDashboardPage = lazy(() => import('../pages/intern/InternDashboardPage').then(m => ({ default: m.InternDashboardPage })));
 const ProductivityPage = lazy(() => import('../pages/intern/ProductivityPage').then(m => ({ default: m.ProductivityPage })));
@@ -102,7 +104,7 @@ export function AppRouter() {
             <Route path="/onboarding/learning" element={<OnboardingStepGuard><OnboardingLearning /></OnboardingStepGuard>} />
             <Route path="/onboarding/activities" element={<OnboardingStepGuard><OnboardingActivities /></OnboardingStepGuard>} />
             <Route path="/onboarding/interview" element={<OnboardingStepGuard><OnboardingInterview /></OnboardingStepGuard>} />
-            <Route path="/onboarding/allocation" element={<OnboardingStepGuard><OnboardingInterview /></OnboardingStepGuard>} />
+            <Route path="/onboarding/allocation" element={<OnboardingStepGuard><OnboardingAllocation /></OnboardingStepGuard>} />
           </Route>
 
           {/* Intern Portal Dashboard & Modules */}
