@@ -3,6 +3,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../features/auth/context/AuthContext';
 import { SidebarProvider, useSidebar } from '../features/auth/context/SidebarContext';
 import { SidebarNavItem as NavItem } from '../components/common/SidebarNavItem';
+import { EnterpriseSidebar } from '../components/common/EnterpriseSidebar';
 import {
   LogOut,
   LayoutDashboard,
@@ -61,27 +62,19 @@ function SharedDashboardLayout({ portalName, roleColor, roleLabel, roleIcon: Rol
 
   const isOnboardingRoute = location.pathname.startsWith('/onboarding/');
 
-  const isRouteActive = (itemTo) => {
-    const current = location.pathname;
-    if (itemTo === '/intern/dashboard') return current === '/intern/dashboard';
-    if (itemTo === '/intern/productivity') {
-      return ['/intern/productivity', '/intern/attendance', '/intern/todo', '/intern/diary', '/intern/pending-work'].some(path => current.startsWith(path));
-    }
-    if (itemTo === '/intern/community') return current.startsWith('/intern/community');
-    if (itemTo === '/intern/post-generator') return current.startsWith('/intern/post-generator') || current.startsWith('/intern/ai-post-generator');
-    if (itemTo === '/intern/leaderboard') return current.startsWith('/intern/leaderboard');
-    if (itemTo === '/intern/announcements') return current.startsWith('/intern/announcements');
-    if (itemTo === '/intern/feedback') return current.startsWith('/intern/feedback');
-    if (itemTo === '/intern/learning') return current.startsWith('/intern/learning');
-    if (itemTo === '/intern/profile') return current.startsWith('/intern/profile');
-    if (itemTo === '/intern/settings') return current.startsWith('/intern/settings');
-    return current === itemTo;
-  };
-
   return (
     <div className="min-h-screen bg-[#F7F7F7] flex">
       {/* Render Sidebar ONLY for main intern portal routes, NOT for onboarding routes */}
-      {!isOnboardingRoute && <EnterpriseSidebar isRouteActive={isRouteActive} />}
+      {!isOnboardingRoute && (
+        <EnterpriseSidebar 
+          isRouteActive={isRouteActiveFunc} 
+          portalName={portalName}
+          roleColor={roleColor}
+          roleLabel={roleLabel}
+          roleIcon={RoleIcon}
+          navigationGroups={navigationGroups}
+        />
+      )}
 
       {/* Main Page Body (No left margin offset when on onboarding routes) */}
       <div className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ease-in-out ${!isOnboardingRoute ? (isCollapsed ? 'md:ml-[72px]' : 'md:ml-[280px]') : 'ml-0'
@@ -115,6 +108,61 @@ function SharedDashboardLayout({ portalName, roleColor, roleLabel, roleIcon: Rol
 }
 
 export function InternLayout() {
+  const location = useLocation();
+
+  const isRouteActive = (itemTo) => {
+    const current = location.pathname;
+    if (itemTo === '/intern/dashboard') return current === '/intern/dashboard';
+    if (itemTo === '/intern/productivity') {
+      return ['/intern/productivity', '/intern/attendance', '/intern/todo', '/intern/diary', '/intern/pending-work'].some(path => current.startsWith(path));
+    }
+    if (itemTo === '/intern/community') return current.startsWith('/intern/community');
+    if (itemTo === '/intern/post-generator') return current.startsWith('/intern/post-generator') || current.startsWith('/intern/ai-post-generator');
+    if (itemTo === '/intern/leaderboard') return current.startsWith('/intern/leaderboard');
+    if (itemTo === '/intern/announcements') return current.startsWith('/intern/announcements');
+    if (itemTo === '/intern/feedback') return current.startsWith('/intern/feedback');
+    if (itemTo === '/intern/learning') return current.startsWith('/intern/learning');
+    if (itemTo === '/intern/profile') return current.startsWith('/intern/profile');
+    if (itemTo === '/intern/settings') return current.startsWith('/intern/settings');
+    return current === itemTo;
+  };
+
+  const internNavigation = [
+    {
+      title: 'Workspace',
+      items: [
+        { to: '/intern/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      ]
+    },
+    {
+      title: 'Operations',
+      items: [
+        { to: '/intern/attendance', icon: Calendar, label: 'Attendance' },
+        { to: '/intern/todo', icon: CheckSquare, label: 'Daily To-Do' },
+        { to: '/intern/diary', icon: BookOpen, label: 'Daily Diary' },
+        { to: '/intern/pending-work', icon: Briefcase, label: 'Pending Work' },
+      ]
+    },
+    {
+      title: 'Engagement',
+      items: [
+        { to: '/intern/leaderboard', icon: Trophy, label: 'Leaderboard' },
+        { to: '/intern/community', icon: Users, label: 'Community' },
+        { to: '/intern/ai-post-generator', icon: Sparkles, label: 'AI Post Generator' },
+        { to: '/intern/announcements', icon: Megaphone, label: 'Announcements' },
+        { to: '/intern/feedback', icon: MessageSquareText, label: 'Feedback' },
+      ]
+    },
+    {
+      title: 'Account',
+      items: [
+        { to: '/intern/learning', icon: BookOpen, label: 'Learning' },
+        { to: '/intern/profile', icon: User, label: 'Profile' },
+        { to: '/intern/settings', icon: Settings, label: 'Settings' },
+      ]
+    }
+  ];
+
   return (
     <SidebarProvider>
       <SharedDashboardLayout
