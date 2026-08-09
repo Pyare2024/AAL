@@ -93,3 +93,48 @@
   border-color: #FF8A00;
   box-shadow: 0 0 0 3px rgba(255, 138, 0, 0.15);
 }
+
+/* Motion & Animation Utilities */
+@keyframes asg-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes asg-gradient-move {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes asg-float {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+  100% { transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: asg-fade-in 220ms ease-out both;
+}
+
+.animate-float {
+  animation: asg-float 2000ms ease-in-out infinite;
+}
+
+.progress-gradient {
+  background: linear-gradient(90deg, #FF8A00 0%, #FF3D00 40%, #FFB86B 60%);
+  background-size: 200% 200%;
+  animation: asg-gradient-move 3s linear infinite;
+}
+
+.active-indicator-gradient {
+  background: linear-gradient(180deg, rgba(255,138,0,1), rgba(255,61,0,1));
+}
+
+.subtle-card-hover:hover {
+  transform: translateY(-6px) scale(1.003);
+  box-shadow: 0 10px 30px rgba(16,24,40,0.06);
+}
+
+.animate-pageEnter {
+  animation: asg-fade-in 260ms cubic-bezier(.2,.9,.3,1) both;
+}

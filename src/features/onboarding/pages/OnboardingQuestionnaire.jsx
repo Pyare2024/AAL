@@ -236,18 +236,18 @@ export function OnboardingQuestionnaire() {
       <div className="bg-[#FFFFFF] border border-[#EDEDED] rounded-2xl p-6 shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <span className="text-xs font-bold text-[#FF3D00] uppercase tracking-wider">Step 2 of 5</span>
+            <span className="text-xs font-bold text-[#FF3D00] uppercase tracking-wider">Step 2 of 6</span>
             <h1 className="text-xl font-bold text-[#0D0D0D]">Intern Assessment Questionnaire</h1>
             <p className="text-xs text-[#9A9A9A] mt-1">
               Please complete all technical, non-technical, and AI tools assessment sections.
             </p>
           </div>
           <span className="text-xs font-extrabold px-3 py-1 bg-gradient-to-r from-[#FF8A00]/10 to-[#FF3D00]/10 border border-[#FF8A00]/20 text-[#FF3D00] rounded-full">
-            40% Complete
+            33% Complete
           </span>
         </div>
         <div className="w-full bg-[#EDEDED] h-2 rounded-full overflow-hidden">
-          <div className="bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] h-full w-[40%] transition-all duration-500"></div>
+          <div className="bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] h-full w-[33%] transition-all duration-500"></div>
         </div>
       </div>
 

@@ -87,11 +87,15 @@ export function OnboardingDashboard() {
           <span>Track Onboarding Milestones</span>
           <span>{completionPct} / 100%</span>
         </div>
-        <div className="w-full bg-[#EDEDED] h-3 rounded-full overflow-hidden">
-          <div 
-            className="bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] h-full rounded-full transition-all duration-500"
+        <div className="w-full bg-[#EDEDED] h-3 rounded-full overflow-hidden relative">
+          <div
+            className="h-full rounded-full transition-all duration-700 progress-gradient"
             style={{ width: `${completionPct}%` }}
-          ></div>
+            aria-hidden="true"
+          />
+          <div className="absolute -top-3 right-0 text-xs font-extrabold text-[#FF3D00] bg-white px-2 py-0.5 rounded-full border border-[#F3F3F3] shadow-sm">
+            {completionPct}%
+          </div>
         </div>
       </div>
 

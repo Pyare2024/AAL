@@ -24,11 +24,6 @@ export function OnboardingLearning() {
 
     setLoading(true);
     try {
-      await supabase
-        .from('profiles')
-        .update({ onboarding_status: 'learning_pending', updated_at: new Date().toISOString() })
-        .eq('id', user.id);
-
       const { nextRoute } = await updateOnboardingStepProgress(user.id, {
         learning_intro_completed: true,
       });
@@ -48,15 +43,15 @@ export function OnboardingLearning() {
       <div className="bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <span className="text-xs font-bold text-[#FF3D00] uppercase tracking-wider">Step 3 of 5</span>
+            <span className="text-xs font-bold text-[#FF3D00] uppercase tracking-wider">Step 3 of 6</span>
             <h1 className="text-xl font-bold text-[#0D0D0D]">Learning & LMS Introduction</h1>
           </div>
           <span className="text-xs font-extrabold px-3 py-1 bg-gradient-to-r from-[#FF8A00]/10 to-[#FF3D00]/10 border border-[#FF8A00]/20 text-[#FF3D00] rounded-full">
-            60% Complete
+            50% Complete
           </span>
         </div>
         <div className="w-full bg-[#EDEDED] h-2 rounded-full overflow-hidden">
-          <div className="bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] h-full w-[60%] transition-all duration-500"></div>
+          <div className="bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] h-full w-[50%] transition-all duration-500"></div>
         </div>
       </div>
 

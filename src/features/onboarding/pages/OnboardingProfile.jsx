@@ -39,10 +39,19 @@ export function OnboardingProfile() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const normalizeUrl = (url) => {
+    if (!url) return '';
+    let trimmed = url.trim();
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      trimmed = 'https://' + trimmed;
+    }
+    return trimmed;
+  };
+
   const validateLinkedIn = (url) => {
     if (!url || !url.trim()) return 'LinkedIn Profile URL is required.';
-    const trimmed = url.trim();
-    if (!trimmed.startsWith('https://') || !trimmed.includes('linkedin.com/in/')) {
+    const normalized = normalizeUrl(url);
+    if (!normalized.includes('linkedin.com/in/')) {
       return 'Please enter a valid LinkedIn profile URL (e.g. https://www.linkedin.com/in/username).';
     }
     return null;
@@ -50,8 +59,8 @@ export function OnboardingProfile() {
 
   const validateGitHub = (url) => {
     if (!url || !url.trim()) return 'GitHub Profile URL is required.';
-    const trimmed = url.trim();
-    if (!trimmed.startsWith('https://') || !trimmed.includes('github.com/')) {
+    const normalized = normalizeUrl(url);
+    if (!normalized.includes('github.com/')) {
       return 'Please enter a valid GitHub profile URL (e.g. https://github.com/username).';
     }
     return null;
@@ -61,15 +70,18 @@ export function OnboardingProfile() {
     e.preventDefault();
     setError(null);
 
+    const cleanLinkedIn = normalizeUrl(formData.linkedin_url);
+    const cleanGitHub = normalizeUrl(formData.github_url);
+
     // Validate LinkedIn URL
-    const linkedinErr = validateLinkedIn(formData.linkedin_url);
+    const linkedinErr = validateLinkedIn(cleanLinkedIn);
     if (linkedinErr) {
       setError(linkedinErr);
       return;
     }
 
     // Validate GitHub URL
-    const githubErr = validateGitHub(formData.github_url);
+    const githubErr = validateGitHub(cleanGitHub);
     if (githubErr) {
       setError(githubErr);
       return;
@@ -84,9 +96,6 @@ export function OnboardingProfile() {
     setLoading(true);
     try {
       const targetId = profile?.id || user?.id;
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('Onboarding profile submit target intern_id (profiles.id):', targetId);
-      }
 
       // 1. Update Profile in database
       const { error: profileErr } = await supabase
@@ -99,9 +108,8 @@ export function OnboardingProfile() {
           degree_year: formData.degree_year,
           gender: formData.gender,
           date_of_birth: formData.date_of_birth || null,
-          linkedin_url: formData.linkedin_url.trim(),
-          github_url: formData.github_url.trim(),
-          onboarding_status: 'questionnaire_pending',
+          linkedin_url: cleanLinkedIn,
+          github_url: cleanGitHub,
           updated_at: new Date().toISOString(),
         })
         .eq('id', targetId);
@@ -132,15 +140,15 @@ export function OnboardingProfile() {
       <div className="bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <span className="text-xs font-bold text-[#FF3D00] uppercase tracking-wider">Step 1 of 5</span>
+            <span className="text-xs font-bold text-[#FF3D00] uppercase tracking-wider">Step 1 of 6</span>
             <h1 className="text-xl font-bold text-[#0D0D0D]">Basic Profile Information</h1>
           </div>
           <span className="text-xs font-extrabold px-3 py-1 bg-gradient-to-r from-[#FF8A00]/10 to-[#FF3D00]/10 border border-[#FF8A00]/20 text-[#FF3D00] rounded-full">
-            20% Complete
+            17% Complete
           </span>
         </div>
         <div className="w-full bg-[#EDEDED] h-2 rounded-full overflow-hidden">
-          <div className="bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] h-full w-[20%] transition-all duration-500"></div>
+          <div className="bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] h-full w-[17%] transition-all duration-500"></div>
         </div>
       </div>
 

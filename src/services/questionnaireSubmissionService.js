@@ -122,15 +122,59 @@ export async function saveInternQuestionnaireDraft(questionnaireId, answersArray
   return submission;
 }
 
-// 4. Submit Final Questionnaire via RPC
+// 4. Submit Final Questionnaire with RPC and direct table fallback
 export async function submitInternQuestionnaire(questionnaireId, answersArray) {
-  const { data, error } = await supabase.rpc('submit_intern_questionnaire', {
-    p_questionnaire_id: questionnaireId,
-    p_answers: answersArray
-  });
+  try {
+    const { data, error } = await supabase.rpc('submit_intern_questionnaire', {
+      p_questionnaire_id: questionnaireId,
+      p_answers: answersArray
+    });
 
-  if (error) throw error;
-  return data;
+    if (!error) return data;
+    console.warn('RPC submit_intern_questionnaire failed, using direct table fallback:', error);
+  } catch (rpcErr) {
+    console.warn('RPC submit_intern_questionnaire exception, using direct table fallback:', rpcErr);
+  }
+
+  // Client-side Direct Table Fallback
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Unauthenticated user session');
+
+  const { data: submission, error: subErr } = await supabase
+    .from('questionnaire_submissions')
+    .upsert(
+      {
+        intern_id: user.id,
+        questionnaire_id: questionnaireId,
+        status: 'submitted',
+        review_status: 'pending',
+        submitted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'intern_id,questionnaire_id' }
+    )
+    .select()
+    .single();
+
+  if (subErr) throw subErr;
+
+  if (answersArray && answersArray.length > 0) {
+    const formattedAnswers = answersArray.map(a => ({
+      submission_id: submission.id,
+      question_id: a.question_id,
+      answer_text: a.answer_text || null,
+      answer_options: a.answer_options || null,
+      updated_at: new Date().toISOString()
+    }));
+
+    const { error: ansErr } = await supabase
+      .from('questionnaire_answers')
+      .upsert(formattedAnswers, { onConflict: 'submission_id,question_id' });
+
+    if (ansErr) throw ansErr;
+  }
+
+  return submission;
 }
 
 // 5. Fetch all questionnaire submissions for Super Admin Assessment Queue

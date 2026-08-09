@@ -20,21 +20,21 @@ export function SidebarNavItem({ to, icon: Icon, label, isActive, isCollapsed, o
         onFocus={() => setShowTooltip(true)}
         onBlur={() => setShowTooltip(false)}
         aria-label={label}
-        className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-xs transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#FF8A00] ${
+        className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-xs transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#FF8A00] ${
           isActive
-            ? 'bg-[#FF8A00] text-white font-bold shadow-sm'
+            ? 'bg-[#FF8A00] text-white font-bold shadow-sm subtle-card-hover'
             : 'text-[#404040] hover:bg-[#FFF7ED] hover:text-[#FF8A00]'
         } ${isCollapsed ? 'justify-center px-2' : ''}`}
       >
         {/* Left Orange Active Indicator Bar */}
         {isActive && (
-          <span className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-white rounded-r-full" />
+          <span className="absolute left-0 top-1.5 bottom-1.5 w-1 active-indicator-gradient rounded-r-full animate-float shadow-sm" />
         )}
 
-        <Icon className={`h-4 w-4 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-[#737373] group-hover:text-[#FF8A00]'}`} />
+        <Icon className={`h-4 w-4 shrink-0 transition-transform transition-colors ${isActive ? 'text-white transform scale-105' : 'text-[#737373] group-hover:text-[#FF8A00]'}`} />
 
         {!isCollapsed && (
-          <span className="truncate text-xs tracking-tight transition-opacity duration-200">
+          <span className="truncate text-xs tracking-tight transition-opacity duration-200 group-hover:translate-x-0.5">
             {label}
           </span>
         )}
