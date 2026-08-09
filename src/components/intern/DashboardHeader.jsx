@@ -1,16 +1,15 @@
 import React from 'react';
-import { Bell } from 'lucide-react';
+import { Calendar, User } from 'lucide-react';
 
 /**
  * Section 1 - Header
- * Displays greeting based on time, profile photo/initials, full name, internship ID, and notification icon.
+ * Displays greeting based on local time, profile photo/initials, full name, internship ID, and current date.
  */
 export function DashboardHeader({ 
   userName = 'Intern', 
   userPhoto = null, 
-  internshipId = 'AAL-INT-0000', 
-  unreadNotifications = 0,
-  onNotificationClick 
+  internshipId = 'Not Assigned',
+  onboardingStage = null
 }) {
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -29,11 +28,18 @@ export function DashboardHeader({
       .slice(0, 2);
   };
 
+  const formattedCurrentDate = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(new Date());
+
   return (
-    <header className="bg-white border border-[#EDEDED] rounded-2xl p-4 sm:p-6 shadow-sm flex flex-row justify-between items-center gap-4">
+    <header className="bg-white border border-[#EDEDED] rounded-2xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-all">
       {/* Left: User Profile & Greeting */}
-      <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#F5F5F5] border border-[#E5E5E5] text-[#171717] flex items-center justify-center font-bold text-base sm:text-lg shrink-0 overflow-hidden">
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#F7F7F7] border border-[#EDEDED] text-[#FF3D00] flex items-center justify-center font-extrabold text-base sm:text-lg shrink-0 overflow-hidden shadow-xs">
           {userPhoto ? (
             <img src={userPhoto} alt={userName} className="w-full h-full object-cover" />
           ) : (
@@ -41,35 +47,31 @@ export function DashboardHeader({
           )}
         </div>
         <div className="min-w-0">
-          <p className="text-xs font-semibold text-[#737373] tracking-wide uppercase">
-            {getGreeting()} 👋
-          </p>
-          <h1 className="text-lg sm:text-2xl font-bold text-[#171717] tracking-tight truncate">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-extrabold text-[#FF3D00] uppercase tracking-wider">
+              {getGreeting()} 👋
+            </span>
+            {onboardingStage && (
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-[#FF3D00]/10 text-[#FF3D00] border border-[#FF3D00]/20 rounded-full">
+                {onboardingStage}
+              </span>
+            )}
+          </div>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-[#0D0D0D] tracking-tight truncate mt-0.5">
             {userName}
           </h1>
           <p className="text-xs text-[#737373] font-mono mt-0.5">
-            ID: <span className="text-[#171717] font-semibold">{internshipId}</span>
+            Intern ID: <span className="text-[#0D0D0D] font-bold">{internshipId}</span>
           </p>
         </div>
       </div>
 
-      {/* Right: Notifications (Hidden until implemented)
-      <div className="relative shrink-0">
-        <button
-          type="button"
-          onClick={onNotificationClick}
-          className="p-2.5 sm:p-3 rounded-xl border border-[#EDEDED] hover:border-[#D4D4D4] bg-white text-[#404040] hover:text-[#171717] transition-all relative"
-          aria-label="Notifications"
-        >
-          <Bell className="h-5 w-5" />
-          {unreadNotifications > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#FF3D00] text-white text-[10px] font-extrabold flex items-center justify-center rounded-full">
-              {unreadNotifications > 9 ? '9+' : unreadNotifications}
-            </span>
-          )}
-        </button>
+      {/* Right: Date Badge */}
+      <div className="shrink-0 flex items-center gap-2 px-3.5 py-2 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-xs font-semibold text-[#737373]">
+        <Calendar className="h-4 w-4 text-[#FF8A00]" />
+        <span>{formattedCurrentDate}</span>
       </div>
-      */}
     </header>
   );
 }
+

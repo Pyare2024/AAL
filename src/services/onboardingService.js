@@ -1,7 +1,11 @@
 import { supabase } from '../lib/supabase';
-import { 
-  synchronizeAllOnboardingStatuses,
-  getCurrentOnboardingStep
+// onboardingService.js uses pure calculations defined in onboardingUtils.js or internally, without importing functions from onboardingUtils that import back from onboardingService.
+import {
+  calculateCompletionPercentage,
+  isOnboardingCompleted,
+  getMatchingOnboardingStatus,
+  getNextOnboardingRoute,
+  getCurrentOnboardingStep,
 } from '../utils/onboardingUtils';
 
 /**
@@ -16,7 +20,7 @@ import {
  */
 export async function fetchOnboardingInterns() {
   // Safe synchronization repair check for any mismatched records
-  await synchronizeAllOnboardingStatuses();
+  await synchronizeAllOnboardingStatusesService();
 
   // 1. Fetch user IDs assigned the 'intern' role from user_roles
   const { data: roleRecords, error: roleErr } = await supabase
