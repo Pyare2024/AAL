@@ -21,6 +21,9 @@ export function AuthProvider({ children }) {
   const [role, setRole] = useState(null);
   const [onboardingProgress, setOnboardingProgress] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  const fetchPromiseRef = React.useRef(null);
+  const lastAuthUserId = React.useRef(null);
 
   const fetchUserData = async (authUser) => {
     if (!authUser) {
@@ -29,16 +32,46 @@ export function AuthProvider({ children }) {
       setRole(null);
       setOnboardingProgress(null);
       setLoading(false);
+      lastAuthUserId.current = null;
       return;
     }
 
-    try {
-      setUser(authUser);
+    if (fetchPromiseRef.current && lastAuthUserId.current === authUser.id) {
+      return fetchPromiseRef.current;
+    }
+
+    const performFetch = async () => {
+      try {
+        setUser(authUser);
 
       // Consolidated Single RPC Call for User Context
       const { data: ctxData, error: ctxErr } = await supabase.rpc('get_current_user_context');
 
-      if (!ctxErr && ctxData && ctxData.authenticated) {
+      if (ctxErr) {
+        console.error('RPC Error:', ctxErr);
+        throw new Error('Failed to retrieve user context.');
+      }
+
+      // Enforce account_status security for Admins and Interns
+      let activeProfile = ctxData?.profile;
+      if (activeProfile && activeProfile.account_status !== 'active') {
+        console.warn('AuthContext: Account is inactive. Signing out.');
+        
+        // Prevent double logout if already logged out
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+           await supabase.auth.signOut();
+        }
+        
+        setUser(null);
+        setProfile(null);
+        setRole(null);
+        setOnboardingProgress(null);
+        setLoading(false);
+        throw new Error('Your account is no longer active.');
+      }
+
+      if (ctxData && ctxData.authenticated) {
         if (ctxData.profile) setProfile(ctxData.profile);
         if (ctxData.user?.role) setRole(ctxData.user.role);
         if (ctxData.onboarding_progress) setOnboardingProgress(ctxData.onboarding_progress);
@@ -51,48 +84,26 @@ export function AuthProvider({ children }) {
         };
       }
 
-      // Fallback in case RPC is not deployed in local development environment
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-      if (profileData) setProfile(profileData);
-
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', authUser.id)
-        .maybeSingle();
-
-      if (roleData) setRole(roleData.role);
-
-      let fetchedProgress = null;
-      if (roleData?.role === 'intern' || !roleData) {
-        const { data: onboardingData } = await supabase
-          .from('onboarding_progress')
-          .select('*')
-          .eq('intern_id', authUser.id)
-          .maybeSingle();
-
-        if (onboardingData) {
-          setOnboardingProgress(onboardingData);
-          fetchedProgress = onboardingData;
-        }
-      }
-
-      return {
-        user: authUser,
-        profile: profileData,
-        role: roleData?.role,
-        onboardingProgress: fetchedProgress,
-      };
-    } catch (err) {
-      console.error('Error loading user auth context state:', err);
       return null;
+      } catch (err) {
+        if (err.message === 'Your account is no longer active.') {
+          // Expected controlled rejection
+          throw err;
+        }
+        console.error('Error loading user auth context state:', err);
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPromiseRef.current = performFetch();
+    lastAuthUserId.current = authUser.id;
+
+    try {
+      return await fetchPromiseRef.current;
     } finally {
-      setLoading(false);
+      fetchPromiseRef.current = null;
     }
   };
 
@@ -102,7 +113,13 @@ export function AuthProvider({ children }) {
     // Initial Session Check
     supabase.auth.getSession()
       .then(({ data: { session } }) => {
-        if (isMounted) fetchUserData(session?.user || null);
+        if (isMounted) {
+          fetchUserData(session?.user || null).catch((err) => {
+            if (err.message !== 'Your account is no longer active.') {
+              console.error('Session user fetch error:', err);
+            }
+          });
+        }
       })
       .catch((err) => {
         console.error('Session get error:', err);
@@ -118,7 +135,13 @@ export function AuthProvider({ children }) {
 
     // Listen to Auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (isMounted) fetchUserData(session?.user || null);
+      if (isMounted) {
+        fetchUserData(session?.user || null).catch((err) => {
+          if (err.message !== 'Your account is no longer active.') {
+            console.error('Auth listener fetch error:', err);
+          }
+        });
+      }
     });
 
     return () => {
@@ -154,8 +177,10 @@ export function AuthProvider({ children }) {
       password,
     });
     if (error) throw error;
-    await fetchUserData(data.user);
-    return data;
+    
+    // fetchUserData will deduplicate if onAuthStateChange also triggered it
+    const userData = await fetchUserData(data.user);
+    return userData;
   };
 
   const signOut = async () => {

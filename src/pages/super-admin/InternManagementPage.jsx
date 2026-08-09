@@ -6,7 +6,8 @@ import {
   updateInternProfile,
   updateInternStatus,
   assignProblemStatement,
-  subscribeToInternManagementChanges
+  subscribeToInternManagementChanges,
+  deleteInternSafe
 } from '../../services/internManagementService';
 import { ManagementFilterBar } from '../../components/common/ManagementFilterBar';
 import { 
@@ -24,7 +25,9 @@ import {
   XCircle,
   Download,
   Check,
-  X
+  X,
+  UserX,
+  Trash2
 } from 'lucide-react';
 
 export function InternManagementPage() {
@@ -48,6 +51,10 @@ export function InternManagementPage() {
   // Status Change Confirmation Modal State
   const [statusConfirmIntern, setStatusConfirmIntern] = useState(null);
   const [targetNewStatus, setTargetNewStatus] = useState('');
+
+  // Action Modals State (Deactivate & Delete)
+  const [deactivateModalIntern, setDeactivateModalIntern] = useState(null);
+  const [deleteModalIntern, setDeleteModalIntern] = useState(null);
 
   // Filter Bar State
   const initialFilters = {
@@ -118,7 +125,7 @@ export function InternManagementPage() {
 
     const psMatch =
       filters.problemStatement === 'all' ||
-      intern.problemStatementId === filters.problemStatement;
+      String(intern.problemStatementId) === String(filters.problemStatement);
 
     const collegeMatch =
       filters.college === 'all' || intern.college === filters.college;
@@ -134,12 +141,42 @@ export function InternManagementPage() {
 
   // Dynamic Submodules & Counts
   const submodules = [
-    { id: 'all-active', label: 'All Active Interns', icon: Users, count: interns.filter(i => i.status === 'Active' || i.status === 'On Leave').length },
-    { id: 'details', label: 'Intern Details', icon: User, count: interns.length },
-    { id: 'allocation', label: 'Intern Allocation', icon: Target, count: interns.length },
-    { id: 'status', label: 'Intern Status', icon: Activity, count: interns.length },
-    { id: 'performance', label: 'Intern Performance', icon: TrendingUp, count: interns.length },
-    { id: 'reports', label: 'Intern Reports', icon: FileText, count: interns.length },
+    { 
+      id: 'all-active', 
+      label: 'All Active Interns', 
+      icon: Users, 
+      count: interns.filter(i => i.status === 'Active' || i.status === 'On Leave').length 
+    },
+    { 
+      id: 'details', 
+      label: 'Intern Details', 
+      icon: User, 
+      count: interns.length 
+    },
+    { 
+      id: 'allocation', 
+      label: 'Intern Allocation', 
+      icon: Target, 
+      count: interns.filter(i => i.problemStatementId).length 
+    },
+    { 
+      id: 'status', 
+      label: 'Intern Status', 
+      icon: Activity, 
+      count: interns.length 
+    },
+    { 
+      id: 'performance', 
+      label: 'Intern Performance', 
+      icon: TrendingUp, 
+      count: interns.filter(i => i.points > 0 || parseFloat(i.learningProgress) > 0 || i.attendanceRate !== 'N/A').length 
+    },
+    { 
+      id: 'reports', 
+      label: 'Intern Reports', 
+      icon: FileText, 
+      count: interns.length 
+    },
   ];
 
   // Open Full Details Drawer with fresh fetch
@@ -191,6 +228,36 @@ export function InternManagementPage() {
       setStatusConfirmIntern(null);
     } catch (err) {
       alert(`Failed to update status: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Deactivate Intern Handler
+  const handleConfirmDeactivate = async () => {
+    if (!deactivateModalIntern) return;
+    setActionLoading(true);
+    try {
+      await updateInternStatus(deactivateModalIntern.id, 'inactive');
+      await loadData(false);
+      setDeactivateModalIntern(null);
+    } catch (err) {
+      alert(`Failed to deactivate intern: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Delete Intern Handler
+  const handleConfirmDelete = async () => {
+    if (!deleteModalIntern) return;
+    setActionLoading(true);
+    try {
+      await deleteInternSafe(deleteModalIntern.id);
+      await loadData(false);
+      setDeleteModalIntern(null);
+    } catch (err) {
+      alert(`Failed to delete intern: ${err.message}`);
     } finally {
       setActionLoading(false);
     }
@@ -330,10 +397,25 @@ export function InternManagementPage() {
               <span>Retry</span>
             </button>
           </div>
+        ) : filteredInterns.length === 0 ? (
+          <div className="py-12 flex flex-col items-center justify-center space-y-3">
+            <div className="p-3 bg-[#F7F7F7] rounded-full border border-[#EDEDED]">
+              <Search className="h-6 w-6 text-[#9A9A9A]" />
+            </div>
+            <h3 className="text-sm font-bold text-[#0D0D0D]">No Interns Found</h3>
+            <p className="text-xs text-[#9A9A9A] text-center max-w-sm">We couldn't find any interns matching your selected filters. Try adjusting your search criteria or resetting the filters.</p>
+            <button
+              onClick={() => setFilters(initialFilters)}
+              className="mt-2 inline-flex items-center space-x-1.5 px-4 py-2 bg-white border border-[#EDEDED] text-[#0D0D0D] rounded-xl text-xs font-bold hover:border-[#FF8A00] transition-colors"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Reset All Filters</span>
+            </button>
+          </div>
         ) : null}
 
         {/* SUBMODULE 1: ALL ACTIVE INTERNS */}
-        {!loading && !error && activeSubmodule === 'all-active' && (
+        {!loading && !error && filteredInterns.length > 0 && activeSubmodule === 'all-active' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center border-b border-[#EDEDED] pb-3">
               <h2 className="text-base font-bold text-[#0D0D0D]">All Active Interns ({filteredInterns.filter(i => i.status === 'Active' || i.status === 'On Leave').length})</h2>
@@ -361,12 +443,26 @@ export function InternManagementPage() {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
                       <button 
                         onClick={() => handleOpenDetails(intern)}
-                        className="px-3 py-1.5 bg-white border border-[#D4D4D4] rounded-xl text-xs font-bold text-[#0D0D0D] hover:border-[#FF8A00]"
+                        className="px-3 py-1.5 bg-white border border-[#D4D4D4] rounded-xl text-xs font-bold text-[#0D0D0D] hover:border-[#FF8A00] transition-colors"
                       >
                         View Full Details
+                      </button>
+                      <button 
+                        onClick={() => setDeactivateModalIntern(intern)}
+                        className="p-1.5 bg-white border border-[#D4D4D4] rounded-xl text-[#0D0D0D] hover:border-amber-500 hover:text-amber-600 transition-colors"
+                        title="Deactivate Intern"
+                      >
+                        <UserX className="h-4 w-4" />
+                      </button>
+                      <button 
+                        onClick={() => setDeleteModalIntern(intern)}
+                        className="p-1.5 bg-white border border-[#D4D4D4] rounded-xl text-[#0D0D0D] hover:border-red-500 hover:text-red-600 transition-colors"
+                        title="Delete Intern"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
@@ -377,7 +473,7 @@ export function InternManagementPage() {
         )}
 
         {/* SUBMODULE 2: INTERN DETAILS */}
-        {!loading && !error && activeSubmodule === 'details' && (
+        {!loading && !error && filteredInterns.length > 0 && activeSubmodule === 'details' && (
           <div className="space-y-4">
             <h2 className="text-base font-bold text-[#0D0D0D] border-b border-[#EDEDED] pb-3">Intern Comprehensive Profiles ({filteredInterns.length})</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -408,7 +504,7 @@ export function InternManagementPage() {
         )}
 
         {/* SUBMODULE 3: INTERN ALLOCATION */}
-        {!loading && !error && activeSubmodule === 'allocation' && (
+        {!loading && !error && filteredInterns.length > 0 && activeSubmodule === 'allocation' && (
           <div className="space-y-4">
             <h2 className="text-base font-bold text-[#0D0D0D] border-b border-[#EDEDED] pb-3">Problem Statement Allocation Management</h2>
             <div className="space-y-3">
@@ -435,7 +531,7 @@ export function InternManagementPage() {
         )}
 
         {/* SUBMODULE 4: INTERN STATUS */}
-        {!loading && !error && activeSubmodule === 'status' && (
+        {!loading && !error && filteredInterns.length > 0 && activeSubmodule === 'status' && (
           <div className="space-y-4">
             <h2 className="text-base font-bold text-[#0D0D0D] border-b border-[#EDEDED] pb-3">Account Status Control (Active / Suspended / Inactive / On Leave)</h2>
             <div className="space-y-3">
@@ -478,7 +574,7 @@ export function InternManagementPage() {
         )}
 
         {/* SUBMODULE 5: INTERN PERFORMANCE */}
-        {!loading && !error && activeSubmodule === 'performance' && (
+        {!loading && !error && filteredInterns.length > 0 && activeSubmodule === 'performance' && (
           <div className="space-y-4">
             <h2 className="text-base font-bold text-[#0D0D0D] border-b border-[#EDEDED] pb-3">Internship Performance Metrics</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -497,7 +593,7 @@ export function InternManagementPage() {
         )}
 
         {/* SUBMODULE 6: INTERN REPORTS */}
-        {!loading && !error && activeSubmodule === 'reports' && (
+        {!loading && !error && filteredInterns.length > 0 && activeSubmodule === 'reports' && (
           <div className="space-y-4">
             <h2 className="text-base font-bold text-[#0D0D0D] border-b border-[#EDEDED] pb-3">Generate & Export Intern Activity Reports</h2>
             <div className="p-6 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl text-center space-y-3">
@@ -718,6 +814,67 @@ export function InternManagementPage() {
                 className="px-4 py-2 bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] text-white font-bold text-xs rounded-xl shadow disabled:opacity-50"
               >
                 {actionLoading ? 'Updating...' : 'Yes, Update Status'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: Confirm Deactivate */}
+      {deactivateModalIntern && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-2xl max-w-sm w-full space-y-4 text-center">
+            <UserX className="h-10 w-10 text-amber-500 mx-auto" />
+            <h3 className="text-base font-bold text-[#0D0D0D]">Deactivate Intern?</h3>
+            <p className="text-xs text-[#9A9A9A]">
+              Are you sure you want to deactivate <strong className="text-[#0D0D0D]">{deactivateModalIntern.name}</strong>?
+            </p>
+
+            <div className="flex justify-center gap-3 pt-2">
+              <button 
+                onClick={() => setDeactivateModalIntern(null)} 
+                className="px-4 py-2 bg-[#EDEDED] text-[#0D0D0D] font-semibold text-xs rounded-xl"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleConfirmDeactivate}
+                disabled={actionLoading}
+                className="px-4 py-2 bg-amber-500 text-white font-bold text-xs rounded-xl shadow hover:bg-amber-600 disabled:opacity-50 transition-colors"
+              >
+                {actionLoading ? 'Deactivating...' : 'Deactivate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: Confirm Delete */}
+      {deleteModalIntern && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-2xl max-w-sm w-full space-y-4 text-center">
+            <Trash2 className="h-10 w-10 text-red-500 mx-auto" />
+            <h3 className="text-base font-bold text-[#0D0D0D]">Delete Intern?</h3>
+            <p className="text-xs text-[#9A9A9A]">
+              Delete <strong className="text-[#0D0D0D]">{deleteModalIntern.name}</strong> permanently?
+            </p>
+            <p className="text-[10px] text-red-600 font-semibold bg-red-50 p-2 rounded">
+              This action permanently removes the intern and their associated data. This cannot be undone.
+            </p>
+
+            <div className="flex justify-center gap-3 pt-2">
+              <button 
+                onClick={() => setDeleteModalIntern(null)} 
+                className="px-4 py-2 bg-[#EDEDED] text-[#0D0D0D] font-semibold text-xs rounded-xl"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleConfirmDelete}
+                disabled={actionLoading}
+                className="px-4 py-2 bg-red-600 text-white font-bold text-xs rounded-xl shadow hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {actionLoading ? 'Deleting...' : 'Delete Permanently'}
               </button>
             </div>
           </div>

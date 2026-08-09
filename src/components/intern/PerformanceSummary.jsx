@@ -7,50 +7,50 @@ import { Calendar, FileText, ListTodo, Award, BookOpen } from 'lucide-react';
  * Attendance %, Diary Completion %, Pending Works, Leaderboard Rank, Learning Progress
  */
 export function PerformanceSummary({
-  attendanceRate = 0,
-  attendanceNotStarted = false,
-  diaryCompletionRate = 0,
-  pendingWorksCount = 0,
-  leaderboardRank = 1,
-  hasPoints = false,
-  userPoints = 0,
-  learningProgressPercent = 0
+  attendanceRate, // number | undefined
+  attendanceNotStarted, // boolean | undefined
+  diaryCompletionRate, // number | undefined
+  pendingWorksCount, // number | undefined
+  leaderboardRank, // number | undefined
+  hasPoints, // boolean | undefined
+  userPoints, // number | undefined
+  learningProgressPercent // number | undefined
 }) {
   const metrics = [
     {
       title: 'Attendance Rate',
-      value: attendanceNotStarted ? 'Not Started' : `${attendanceRate}%`,
+      value: attendanceNotStarted ? 'Not Started' : (attendanceRate === undefined ? 'N/A' : `${attendanceRate}%`),
       subtitle: attendanceNotStarted ? 'No sessions yet' : 'Eligible sessions',
       icon: Calendar,
-      color: 'text-[#FF8A00]'
+      color: attendanceRate === undefined ? 'text-gray-400' : 'text-[#FF8A00]'
     },
     {
       title: 'Diary Completion',
-      value: `${diaryCompletionRate}%`,
+      value: diaryCompletionRate === undefined ? 'N/A' : `${diaryCompletionRate}%`,
       subtitle: 'Daily entries logged',
       icon: FileText,
-      color: 'text-[#FF3D00]'
+      color: diaryCompletionRate === undefined ? 'text-gray-400' : 'text-[#FF3D00]'
     },
     {
       title: 'Pending Works',
-      value: `${pendingWorksCount}`,
+      value: pendingWorksCount === undefined ? 'N/A' : `${pendingWorksCount}`,
       subtitle: 'Actionable tasks',
       icon: ListTodo,
-      color: 'text-[#FF8A00]'
+      color: pendingWorksCount === undefined ? 'text-gray-400' : 'text-[#FF8A00]'
     },
     {
       title: 'Leaderboard Rank',
-      value: hasPoints ? `#${leaderboardRank}` : 'Unranked',
-      subtitle: hasPoints ? `${userPoints} pts` : 'Earn points to rank',
+      value: hasPoints === undefined ? 'N/A' : (hasPoints ? `#${leaderboardRank}` : 'Unranked'),
+      subtitle: hasPoints === undefined ? 'N/A' : (hasPoints ? `${userPoints} pts` : 'Earn points to rank'),
       icon: Award,
-      color: 'text-amber-600'
+      color: hasPoints === undefined ? 'text-gray-400' : 'text-amber-600'
     },
     {
       title: 'Learning Progress',
-      value: `${learningProgressPercent}%`,
+      value: learningProgressPercent === undefined ? 'N/A' : `${learningProgressPercent}%`,
       subtitle: 'LMS course completion',
       icon: BookOpen,
-      color: 'text-blue-600'
+      color: learningProgressPercent === undefined ? 'text-gray-400' : 'text-blue-600'
     }
   ];
 
@@ -71,7 +71,7 @@ export function PerformanceSummary({
                 <Icon className={`h-4 w-4 ${m.color}`} />
               </div>
               <div>
-                <p className="text-xl font-extrabold text-[#171717]">
+                <p className={`text-xl font-extrabold ${m.value === 'N/A' ? 'text-gray-400' : 'text-[#171717]'}`}>
                   {m.value}
                 </p>
                 <p className="text-[11px] text-[#737373]">

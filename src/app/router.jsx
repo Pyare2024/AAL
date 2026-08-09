@@ -41,6 +41,10 @@ const SuperAdminAttendanceLocationManagement = lazy(() => import('../pages/super
 const ProblemStatementManagementPage = lazy(() => import('../pages/super-admin/ProblemStatementManagementPage').then(m => ({ default: m.ProblemStatementManagementPage })));
 const AdminManagementPage = lazy(() => import('../pages/super-admin/AdminManagementPage').then(m => ({ default: m.AdminManagementPage })));
 const AdminDashboardPage = lazy(() => import('../pages/admin/AdminDashboardPage').then(m => ({ default: m.AdminDashboardPage })));
+const AdminActiveInternsPage = lazy(() => import('../pages/admin/AdminActiveInternsPage').then(m => ({ default: m.AdminActiveInternsPage })));
+const AdminReportsPage = lazy(() => import('../pages/admin/AdminReportsPage').then(m => ({ default: m.AdminReportsPage })));
+const AdminProfilePage = lazy(() => import('../pages/admin/AdminProfilePage').then(m => ({ default: m.AdminProfilePage })));
+const AdminSettingsPage = lazy(() => import('../pages/admin/AdminSettingsPage').then(m => ({ default: m.AdminSettingsPage })));
 const SharedLeaderboardPage = lazy(() => import('../pages/shared/SharedLeaderboardPage').then(m => ({ default: m.SharedLeaderboardPage })));
 const SharedFeedbackPage = lazy(() => import('../pages/shared/SharedFeedbackPage').then(m => ({ default: m.SharedFeedbackPage })));
 const SharedAnnouncementsPage = lazy(() => import('../pages/shared/SharedAnnouncementsPage').then(m => ({ default: m.SharedAnnouncementsPage })));
@@ -153,12 +157,17 @@ export function AppRouter() {
           >
             <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
             <Route path="/admin/interns" element={<ModulePlaceholder title="Onboarding Interns" role="Admin" />} />
-            <Route path="/admin/active-interns" element={<ModulePlaceholder title="Allocated Active Interns" role="Admin" />} />
+            <Route path="/admin/active-interns" element={<AdminActiveInternsPage />} />
             <Route path="/admin/attendance" element={<ModulePlaceholder title="Attendance Review" role="Admin" />} />
             <Route path="/admin/leaderboard" element={<SharedLeaderboardPage />} />
             <Route path="/admin/announcements" element={<SharedAnnouncementsPage />} />
             <Route path="/admin/feedback" element={<SharedFeedbackPage />} />
             <Route path="/admin/community" element={<SharedCommunityPage />} />
+            
+            {/* Administration */}
+            <Route path="/admin/reports" element={<AdminReportsPage />} />
+            <Route path="/admin/profile" element={<AdminProfilePage />} />
+            <Route path="/admin/settings" element={<AdminSettingsPage />} />
           </Route>
 
           {/* Super Admin Portal (Hierarchical Submodule Routes) */}

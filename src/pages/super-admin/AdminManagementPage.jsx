@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { createAdminAccount } from '../../services/adminService';
+import { adminManagementService } from '../../services/adminManagementService';
 import {
   ShieldCheck,
   UserCheck,
@@ -10,6 +10,7 @@ import {
   ArrowUpDown,
   Edit,
   Eye,
+  EyeOff,
   CheckCircle2,
   XCircle,
   Calendar,
@@ -33,6 +34,15 @@ export function AdminManagementPage() {
 
   // Admin Roster & Metadata State
   const [admins, setAdmins] = useState([]);
+  const [adminStats, setAdminStats] = useState({
+    totalAdmins: 0,
+    activeAdmins: 0,
+    inactiveAdmins: 0,
+    unassignedAdmins: 0,
+    managedInterns: 0,
+    coverageCount: 0,
+    totalActivePs: 0
+  });
   const [problemStatements, setProblemStatements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -77,76 +87,25 @@ export function AdminManagementPage() {
     if (!isSilent) setLoading(true);
     setErrorMsg(null);
     try {
-      const { data: psData } = await supabase
-        .from('problem_statements')
-        .select('id, title, slug, status')
-        .order('title', { ascending: true });
-
+      const psData = await adminManagementService.fetchProblemStatements();
       setProblemStatements(psData || []);
 
-      const { data: adminRoles, error: rolesErr } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .eq('role', 'admin');
-
-      if (rolesErr) throw rolesErr;
-
-      const adminUserIds = (adminRoles || []).map((r) => r.user_id);
-      let profileRecords = [];
-
-      if (adminUserIds.length > 0) {
-        const { data: profiles, error: profErr } = await supabase
-          .from('profiles')
-          .select('*')
-          .in('id', adminUserIds)
-          .order('created_at', { ascending: false });
-
-        if (profErr) throw profErr;
-        profileRecords = profiles || [];
-      }
-
-      const { data: adminPsData } = await supabase
-        .from('admin_problem_statements')
-        .select('admin_id, problem_statement_id, problem_statements(id, title)');
-
-      const adminPsMap = {};
-      (adminPsData || []).forEach((row) => {
-        if (!adminPsMap[row.admin_id]) adminPsMap[row.admin_id] = [];
-        if (row.problem_statements) {
-          adminPsMap[row.admin_id].push(row.problem_statements);
-        }
-      });
-
-      const { data: internPsData } = await supabase
-        .from('profiles')
-        .select('problem_statement_id, id')
-        .not('problem_statement_id', 'is', null);
-
-      const psInternMap = {};
-      (internPsData || []).forEach((row) => {
-        if (!psInternMap[row.problem_statement_id]) psInternMap[row.problem_statement_id] = new Set();
-        psInternMap[row.problem_statement_id].add(row.id);
-      });
-
-      const enrichedAdmins = profileRecords.map((adm) => {
-        const allocatedStatements = adminPsMap[adm.id] || [];
-        const internSet = new Set();
-        allocatedStatements.forEach((ps) => {
-          if (psInternMap[ps.id]) {
-            psInternMap[ps.id].forEach((iId) => internSet.add(iId));
-          }
+      const data = await adminManagementService.fetchAdminData();
+      if (data) {
+        setAdmins(data.admins || []);
+        setAdminStats({
+          totalAdmins: data.total_admins || 0,
+          activeAdmins: data.active_admins || 0,
+          inactiveAdmins: data.inactive_admins || 0,
+          unassignedAdmins: data.unassigned_admins || 0,
+          managedInterns: data.managed_interns || 0,
+          coverageCount: data.coverage_count || 0,
+          totalActivePs: data.total_active_ps || 0
         });
-        return {
-          ...adm,
-          allocated_statements: allocatedStatements,
-          allocated_interns_count: internSet.size,
-        };
-      });
-
-      setAdmins(enrichedAdmins);
+      }
     } catch (err) {
       console.error('Error fetching admin data:', err);
-      setErrorMsg(err.message || 'Failed to load Admin accounts from Supabase.');
+      setErrorMsg(err.message || 'Failed to load Admin accounts from backend.');
     } finally {
       setLoading(false);
     }
@@ -185,6 +144,9 @@ export function AdminManagementPage() {
     if (createFormData.password !== createFormData.confirmPassword) {
       errors.confirmPassword = 'Passwords do not match.';
     }
+    if (createFormData.selectedPsIds.length === 0) {
+      errors.selectedPsIds = 'Please select at least one Problem Statement.';
+    }
 
     const existing = admins.find(
       (a) => a.email.toLowerCase().trim() === createFormData.email.toLowerCase().trim()
@@ -199,13 +161,24 @@ export function AdminManagementPage() {
 
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
-    if (!validateCreateForm() || isSubmitting) return;
+    console.log('Create admin submit started');
+    
+    if (!validateCreateForm()) {
+       console.log('Validation failed:', formErrors);
+       return;
+    }
+    if (isSubmitting) {
+       console.log('Already submitting, returning.');
+       return;
+    }
 
+    console.log('Selected PS count:', createFormData.selectedPsIds.length);
     setIsSubmitting(true);
     setErrorMsg(null);
 
     try {
-      await createAdminAccount({
+      console.log('Calling create-admin Edge Function via service');
+      await adminManagementService.createAdminAccount({
         fullName: createFormData.fullName,
         email: createFormData.email,
         mobile: createFormData.mobile,
@@ -275,29 +248,22 @@ export function AdminManagementPage() {
 
     try {
       if (modalMode === 'edit') {
-        const { error: profileErr } = await supabase
-          .from('profiles')
-          .update({
-            full_name: editFormData.fullName.trim(),
-            mobile: editFormData.mobile.trim(),
-            account_status: editFormData.accountStatus,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', selectedAdmin.id);
-        if (profileErr) console.warn('Profile update note:', profileErr);
-      }
-
-      await supabase
-        .from('admin_problem_statements')
-        .delete()
-        .eq('admin_id', selectedAdmin.id);
-
-      if (editFormData.selectedPsIds.length > 0) {
-        const allocPayload = editFormData.selectedPsIds.map((psId) => ({
-          admin_id: selectedAdmin.id,
-          problem_statement_id: psId,
-        }));
-        await supabase.from('admin_problem_statements').insert(allocPayload);
+        await adminManagementService.updateAdmin(
+          selectedAdmin.id,
+          editFormData.fullName,
+          editFormData.mobile,
+          editFormData.accountStatus,
+          editFormData.selectedPsIds
+        );
+      } else if (modalMode === 'allocations') {
+        // Just reusing updateAdmin with the same profile data but new assignments
+        await adminManagementService.updateAdmin(
+          selectedAdmin.id,
+          selectedAdmin.full_name,
+          selectedAdmin.mobile || '',
+          selectedAdmin.account_status,
+          editFormData.selectedPsIds
+        );
       }
 
       setSuccessMsg(`Admin account "${selectedAdmin.full_name}" updated successfully!`);
@@ -343,12 +309,7 @@ export function AdminManagementPage() {
     setErrorMsg(null);
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ account_status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', admin.id);
-      
-      if (error) throw error;
+      await adminManagementService.updateAdminStatus(admin.id, newStatus);
       
       if (newStatus === 'deleted') {
         setSuccessMsg(`Admin "${admin.full_name}" has been deleted.`);
@@ -397,16 +358,16 @@ export function AdminManagementPage() {
   }, [admins, searchQuery, statusFilter, psFilter, sortBy]);
 
   const kpis = useMemo(() => {
-    const validAdmins = admins.filter(a => a.account_status !== 'deleted');
     return {
-      total: validAdmins.length,
-      active: validAdmins.filter(a => a.account_status === 'active').length,
-      inactive: validAdmins.filter(a => a.account_status !== 'active').length,
-      unassigned: validAdmins.filter(a => (a.allocated_statements || []).length === 0).length,
-      managedInterns: validAdmins.reduce((sum, a) => sum + (a.allocated_interns_count || 0), 0),
-      coveredPs: new Set(validAdmins.flatMap(a => (a.allocated_statements || []).map(p => p.id))).size
+      total: adminStats.totalAdmins,
+      active: adminStats.activeAdmins,
+      inactive: adminStats.inactiveAdmins,
+      unassigned: adminStats.unassignedAdmins,
+      managedInterns: adminStats.managedInterns,
+      coveredPs: adminStats.coverageCount,
+      totalActivePs: adminStats.totalActivePs
     };
-  }, [admins]);
+  }, [adminStats]);
 
   const formatDate = useCallback((dateStr) => {
     if (!dateStr) return '—';
@@ -475,6 +436,7 @@ export function AdminManagementPage() {
                   </label>
                 ))}
               </div>
+              {formErrors.selectedPsIds && <p className="text-xs font-medium text-red-600 mt-2 flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" /><span>{formErrors.selectedPsIds}</span></p>}
             </div>
 
             <div className="pt-6 flex items-center justify-end gap-3 border-t border-[#EDEDED]">
@@ -949,6 +911,9 @@ export function AdminManagementPage() {
 // -------------------------------------------------------------
 
 function AdminProfileForm({ formData, setFormData, formErrors, mode }) {
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
@@ -978,6 +943,70 @@ function AdminProfileForm({ formData, setFormData, formErrors, mode }) {
         />
         {formErrors.mobile && <p className="text-xs font-medium text-red-600 mt-1 flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" /><span>{formErrors.mobile}</span></p>}
       </div>
+
+      {mode === 'create' && (
+        <>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-bold text-[#171717] uppercase tracking-wider mb-1.5">
+              Email Address <span className="text-[#FF8A00]">*</span>
+            </label>
+            <input
+              type="email"
+              placeholder="e.g. admin@aiapex.com"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className={`w-full px-3.5 py-2.5 bg-white border ${formErrors.email ? 'border-red-500 bg-red-50/20' : 'border-[#EDEDED]'} rounded-xl text-sm text-[#171717] focus:outline-none focus:border-[#FF8A00] transition-all shadow-sm`}
+            />
+            {formErrors.email && <p className="text-xs font-medium text-red-600 mt-1 flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" /><span>{formErrors.email}</span></p>}
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#171717] uppercase tracking-wider mb-1.5">
+              Temporary Password <span className="text-[#FF8A00]">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Enter password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className={`w-full px-3.5 py-2.5 bg-white border ${formErrors.password ? 'border-red-500 bg-red-50/20' : 'border-[#EDEDED]'} rounded-xl text-sm text-[#171717] focus:outline-none focus:border-[#FF8A00] transition-all shadow-sm pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9A9A9A] hover:text-[#171717] transition-colors focus:outline-none"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {formErrors.password && <p className="text-xs font-medium text-red-600 mt-1 flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" /><span>{formErrors.password}</span></p>}
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#171717] uppercase tracking-wider mb-1.5">
+              Confirm Password <span className="text-[#FF8A00]">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                placeholder="Confirm password"
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                className={`w-full px-3.5 py-2.5 bg-white border ${formErrors.confirmPassword ? 'border-red-500 bg-red-50/20' : 'border-[#EDEDED]'} rounded-xl text-sm text-[#171717] focus:outline-none focus:border-[#FF8A00] transition-all shadow-sm pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9A9A9A] hover:text-[#171717] transition-colors focus:outline-none"
+              >
+                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {formErrors.confirmPassword && <p className="text-xs font-medium text-red-600 mt-1 flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" /><span>{formErrors.confirmPassword}</span></p>}
+          </div>
+        </>
+      )}
 
       {mode === 'edit' && (
         <div className="sm:col-span-2">

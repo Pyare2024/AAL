@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../features/auth/context/AuthContext';
 import { SidebarProvider, useSidebar } from '../features/auth/context/SidebarContext';
-import { EnterpriseSidebar } from '../components/common/EnterpriseSidebar';
 import { SidebarNavItem as NavItem } from '../components/common/SidebarNavItem';
 import { 
   LogOut, 
@@ -26,11 +25,13 @@ import {
   ChevronRight,
   ClipboardList,
   Briefcase,
+  BriefcaseBusiness,
   Sparkles,
   Settings,
   MessageSquareText,
   Megaphone,
-  Trophy
+  Trophy,
+  UserRound
 } from 'lucide-react';
 
 export function AuthLayout() {
@@ -50,9 +51,233 @@ export function AuthLayout() {
   );
 }
 
-function InternLayoutContent() {
+// ------------------------------------------------------------------
+// SHARED DASHBOARD LAYOUT
+// ------------------------------------------------------------------
+
+function SharedDashboardLayout({ portalName, roleColor, roleLabel, roleIcon: RoleIcon, navigationGroups, isRouteActiveFunc }) {
   const location = useLocation();
-  const { isCollapsed, toggleMobileMenu } = useSidebar();
+  const { signOut, profile } = useAuth();
+  
+  // Collapse State
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`${portalName.toLowerCase().replace(/\s+/g, '-')}SidebarCollapsed`);
+      return saved ? JSON.parse(saved) : false;
+    } catch (e) {
+      return false;
+    }
+  });
+
+  // Mobile Drawer State
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(prev => {
+      const newState = !prev;
+      localStorage.setItem(`${portalName.toLowerCase().replace(/\s+/g, '-')}SidebarCollapsed`, JSON.stringify(newState));
+      return newState;
+    });
+  };
+
+  const closeMobileMenu = () => setIsMobileOpen(false);
+  const toggleMobileMenu = () => setIsMobileOpen(!isMobileOpen);
+
+  const isRouteActive = isRouteActiveFunc || ((itemTo) => {
+    if (itemTo === `/${portalName.toLowerCase().replace(/\s+/g, '-')}/dashboard`) return location.pathname === itemTo;
+    return location.pathname === itemTo || location.pathname.startsWith(itemTo);
+  });
+
+  const renderSidebarContent = (collapsed) => (
+    <div className="h-full flex flex-col relative bg-white">
+      {/* Top: Logo & Portal Identity */}
+      <div className={`h-[72px] flex items-center px-4 shrink-0 border-b border-[#EDEDED] ${collapsed ? 'justify-center' : 'justify-between'}`}>
+        <div className="flex items-center gap-3 min-w-0 overflow-hidden">
+          <div className={`w-10 h-10 rounded-xl bg-gradient-to-r ${roleColor} flex items-center justify-center shadow-md shrink-0`}>
+            <RoleIcon className="h-6 w-6 text-white" />
+          </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <span className="font-bold text-lg text-[#0D0D0D] tracking-tight block leading-none truncate">AI APEX</span>
+              <span className={`text-[10px] ${roleColor.includes('FF3D00') && roleColor.includes('from-[#FF3D00]') ? 'text-[#FF3D00]' : 'text-[#FF8A00]'} font-extrabold uppercase tracking-wider block mt-0.5 truncate`}>
+                {portalName}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Desktop Collapse Toggle (Inside sidebar header) */}
+        {!isMobileOpen && (
+          <button
+            onClick={toggleSidebar}
+            className={`hidden md:flex p-1.5 text-[#9A9A9A] hover:bg-[#F7F7F7] hover:text-[#FF8A00] rounded-lg transition-colors ${
+              collapsed ? 'absolute -right-3.5 top-5 bg-white border border-[#EDEDED] shadow-sm z-50' : ''
+            }`}
+            aria-label={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          >
+            {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
+
+      {/* Middle: Navigation */}
+      <div className={`flex-1 overflow-y-auto p-4 flex flex-col gap-6 scrollbar-thin scrollbar-thumb-[#EDEDED] scrollbar-track-transparent ${collapsed ? 'items-center' : ''}`}>
+        {navigationGroups.map((group, groupIdx) => (
+          <div key={groupIdx} className="w-full">
+            {!collapsed && group.title ? (
+              <p className="px-3 text-[10px] font-bold text-[#9A9A9A] uppercase tracking-widest mb-2">{group.title}</p>
+            ) : (
+               group.title && <div className="w-full h-px bg-[#EDEDED] my-2" />
+            )}
+            <div className="flex flex-col space-y-1 w-full">
+              {group.items.map((item) => (
+                <NavItem 
+                  key={item.to} 
+                  {...item} 
+                  isActive={isRouteActive(item.to)}
+                  isCollapsed={collapsed}
+                  onClick={closeMobileMenu}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#F7F7F7] flex">
+      {/* Desktop Full-Height Sidebar */}
+      <aside className={`hidden md:block shrink-0 h-screen sticky top-0 border-r border-[#EDEDED] transition-all duration-300 ease-in-out z-40 ${isSidebarCollapsed ? 'w-[76px]' : 'w-[260px]'}`}>
+        {renderSidebarContent(isSidebarCollapsed)}
+      </aside>
+
+      {/* Mobile Drawer Overlay */}
+      {isMobileOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-200"
+            onClick={closeMobileMenu}
+            aria-hidden="true"
+          />
+          <div className="relative w-[280px] max-w-[80vw] bg-white h-dvh shadow-2xl z-50 flex flex-col">
+            <div className="absolute top-4 right-4 z-50">
+              <button
+                type="button"
+                onClick={closeMobileMenu}
+                className="p-1.5 rounded-lg bg-white/80 text-[#737373] hover:text-[#171717] backdrop-blur-sm"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {renderSidebarContent(false)}
+          </div>
+        </div>
+      )}
+
+      {/* Main Content Column */}
+      <div className="flex-1 flex flex-col min-w-0">
+        
+        {/* Right-Side Global Header */}
+        <header className="bg-white border-b border-[#EDEDED] sticky top-0 z-30 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] h-[72px] shrink-0">
+          <div className="w-full h-full px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+            
+            <div className="flex items-center">
+              {/* Mobile Menu Toggle (Only visible on small screens) */}
+              <button
+                type="button"
+                onClick={toggleMobileMenu}
+                className="md:hidden p-2 -ml-2 mr-2 rounded-lg text-[#171717] hover:bg-[#F5F5F5]"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              
+              {/* Optional page context can go here, but prompt wants it clean */}
+              <div className="hidden md:block">
+                <span className="text-sm font-semibold text-[#0D0D0D]">{roleLabel}</span>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className="flex flex-col items-end hidden sm:flex">
+                <span className="text-sm font-bold text-[#0D0D0D] leading-none">{profile?.full_name || 'User'}</span>
+                <span className="text-xs text-[#9A9A9A] font-medium mt-1">{roleLabel}</span>
+              </div>
+              <div className="h-8 w-px bg-[#EDEDED] mx-1 hidden sm:block"></div>
+              <button
+                onClick={signOut}
+                className="flex items-center gap-2 text-sm font-medium text-[#9A9A9A] hover:text-red-600 px-3 py-2 rounded-xl hover:bg-red-50 transition-colors group"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
+            </div>
+          </div>
+        </header>
+        
+        {/* Page Content Container */}
+        <main className="flex-1 overflow-x-hidden p-6 lg:p-8">
+          <div className="max-w-[1600px] w-full mx-auto">
+            <Outlet />
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// INTERN LAYOUT
+// ------------------------------------------------------------------
+
+export function InternLayout() {
+  const { profile } = useAuth();
+  const isOnboardingIncomplete = profile?.onboarding_status !== 'completed';
+  const location = useLocation();
+
+  const internNavigation = isOnboardingIncomplete
+    ? [
+        {
+          title: 'Onboarding',
+          items: [
+            { to: '/onboarding/dashboard', icon: UserCheck, label: 'Onboarding Progress' },
+            { to: '/onboarding/profile', icon: UserCheck, label: '1. Profile Completion' },
+            { to: '/onboarding/questionnaire', icon: FileText, label: '2. Questionnaire' },
+            { to: '/onboarding/learning', icon: BookOpen, label: '3. Learning Setup' },
+            { to: '/onboarding/activities', icon: CheckSquare, label: '4. Seven Activities' },
+            { to: '/onboarding/interview', icon: Calendar, label: '5. Interview & Allocation' },
+          ]
+        }
+      ]
+    : [
+        {
+          title: 'Overview',
+          items: [
+            { to: '/intern/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+          ]
+        },
+        {
+          title: 'Work & Engagement',
+          items: [
+            { to: '/intern/productivity', icon: BriefcaseBusiness, label: 'Productivity' },
+            { to: '/intern/community', icon: Users, label: 'Community' },
+            { to: '/intern/post-generator', icon: Sparkles, label: 'AI Post Generation' },
+            { to: '/intern/leaderboard', icon: Trophy, label: 'Leaderboard' },
+            { to: '/intern/announcements', icon: Megaphone, label: 'Announcements' },
+            { to: '/intern/feedback', icon: MessageSquareText, label: 'Feedback & Suggestions' },
+            { to: '/intern/learning', icon: BookOpen, label: 'Learning' },
+          ]
+        },
+        {
+          title: 'Account',
+          items: [
+            { to: '/intern/profile', icon: UserRound, label: 'Profile' },
+            { to: '/intern/settings', icon: Settings, label: 'Settings' },
+          ]
+        }
+      ];
 
   const isRouteActive = (itemTo) => {
     const current = location.pathname;
@@ -72,206 +297,132 @@ function InternLayoutContent() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F7F7] flex">
-      {/* Fixed Full-Height Sidebar */}
-      <EnterpriseSidebar isRouteActive={isRouteActive} />
-
-      {/* Main Page Body (Offset by sidebar width on desktop) */}
-      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ease-in-out ${
-        isCollapsed ? 'md:ml-[72px]' : 'md:ml-[280px]'
-      }`}>
-        {/* Mobile Header Bar with Hamburger Menu Toggle */}
-        <header className="md:hidden bg-white border-b border-[#EDEDED] p-3 flex justify-between items-center sticky top-0 z-20">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] flex items-center justify-center text-white font-bold text-xs">
-              A
-            </div>
-            <span className="font-bold text-sm text-[#171717]">AI Apex</span>
-          </div>
-          <button
-            type="button"
-            onClick={toggleMobileMenu}
-            aria-label="Open Navigation Menu"
-            className="p-2 rounded-lg text-[#171717] hover:bg-[#F5F5F5]"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-        </header>
-
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
-          <Outlet />
-        </main>
-      </div>
-    </div>
-  );
-}
-
-export function InternLayout() {
-  return (
     <SidebarProvider>
-      <InternLayoutContent />
+      <SharedDashboardLayout 
+        portalName="Intern Portal"
+        roleColor="from-[#FF8A00] to-[#FF3D00]"
+        roleLabel="Intern"
+        roleIcon={UserRound}
+        navigationGroups={internNavigation}
+        isRouteActiveFunc={isRouteActive}
+      />
     </SidebarProvider>
   );
 }
 
-export function AdminLayout() {
-  const location = useLocation();
-  const { signOut } = useAuth();
+// ------------------------------------------------------------------
+// ADMIN LAYOUT
+// ------------------------------------------------------------------
 
-  const navigation = [
-    { to: '/admin/dashboard', icon: ShieldCheck, label: 'Admin Dashboard' },
-    { to: '/admin/interns', icon: UserCheck, label: 'Onboarding Interns' },
-    { to: '/admin/active-interns', icon: LayoutDashboard, label: 'Active Interns' },
-    { to: '/admin/attendance', icon: Calendar, label: 'Attendance Review' },
-    { to: '/admin/leaderboard', icon: Trophy, label: 'Leaderboard' },
-    { to: '/admin/community', icon: Users, label: 'Community' },
-    { to: '/admin/announcements', icon: Megaphone, label: 'Announcements' },
-    { to: '/admin/feedback', icon: MessageSquareText, label: 'Feedback & Suggestions' },
+export function AdminLayout() {
+  const adminNavigation = [
+    {
+      title: 'Overview',
+      items: [
+        { to: '/admin/dashboard', icon: ShieldCheck, label: 'Admin Dashboard' },
+      ]
+    },
+    {
+      title: 'Intern Management',
+      items: [
+        { to: '/admin/interns', icon: UserCheck, label: 'Onboarding Interns' },
+        { to: '/admin/active-interns', icon: LayoutDashboard, label: 'Active Interns' },
+        { to: '/admin/attendance', icon: Calendar, label: 'Attendance Review' },
+      ]
+    },
+    {
+      title: 'Engagement',
+      items: [
+        { to: '/admin/leaderboard', icon: Trophy, label: 'Leaderboard' },
+        { to: '/admin/community', icon: Users, label: 'Community' },
+        { to: '/admin/announcements', icon: Megaphone, label: 'Announcements' },
+        { to: '/admin/feedback', icon: MessageSquareText, label: 'Feedback & Suggestions' },
+      ]
+    },
+    {
+      title: 'Administration',
+      items: [
+        { to: '/admin/reports', icon: TrendingUp, label: 'Reports & Analytics' },
+        { to: '/admin/profile', icon: User, label: 'Profile' },
+        { to: '/admin/settings', icon: Sliders, label: 'Settings' },
+      ]
+    }
   ];
 
-  return (
-    <div className="min-h-screen bg-[#F7F7F7] flex flex-col">
-      <header className="bg-white border-b border-[#EDEDED] sticky top-0 z-30 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] flex items-center justify-center shadow-md shadow-[#FF3D00]/20">
-              <ShieldCheck className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <span className="font-bold text-lg text-[#0D0D0D] tracking-tight block leading-none">AI APEX</span>
-              <span className="text-xs text-[#FF8A00] font-bold">ADMIN CONSOLE</span>
-            </div>
-          </div>
-          <div className="flex items-center space-x-4">
-            <span className="text-sm font-semibold text-[#0D0D0D]">Admin Portal</span>
-            <button
-              onClick={signOut}
-              className="flex items-center gap-2 text-sm font-medium text-[#9A9A9A] hover:text-[#FF3D00] px-3 py-2 rounded-xl hover:bg-[#F7F7F7] transition-colors"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>Logout</span>
-            </button>
-          </div>
-        </div>
-      </header>
+  const location = useLocation();
+  const isRouteActive = (itemTo) => location.pathname === itemTo;
 
-      <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex gap-8">
-        <aside className="w-64 shrink-0 hidden md:block">
-          <div className="bg-white border border-[#EDEDED] rounded-2xl p-4 shadow-sm sticky top-24 space-y-1">
-            <div className="px-4 py-2 mb-2">
-              <p className="text-xs font-semibold text-[#9A9A9A] uppercase tracking-wider">Admin Tools</p>
-            </div>
-            {navigation.map((item) => (
-              <NavItem 
-                key={item.to} 
-                {...item} 
-                isActive={location.pathname === item.to}
-              />
-            ))}
-          </div>
-        </aside>
-        <main className="flex-1 min-w-0">
-          <Outlet />
-        </main>
-      </div>
-    </div>
+  return (
+    <SharedDashboardLayout 
+      portalName="Admin Console"
+      roleColor="from-[#FF8A00] to-[#FF3D00]"
+      roleLabel="Admin Portal"
+      roleIcon={ShieldCheck}
+      navigationGroups={adminNavigation}
+      isRouteActiveFunc={isRouteActive}
+    />
   );
 }
 
+// ------------------------------------------------------------------
+// SUPER ADMIN LAYOUT
+// ------------------------------------------------------------------
+
 export function SuperAdminLayout() {
   const location = useLocation();
-  const { signOut } = useAuth();
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Main Sidebar Navigation Modules ONLY (Submodules displayed as cards inside content area)
-  const navigation = [
-    { to: '/super-admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/super-admin/onboarding', icon: UserCheck, label: 'Onboarding Management' },
-    { to: '/super-admin/questionnaire-management', icon: ClipboardList, label: 'Questionnaire Management' },
-    { to: '/super-admin/interns', icon: Users, label: 'Intern Management' },
-    { to: '/super-admin/learning', icon: BookOpen, label: 'Learning Management' },
-    { to: '/super-admin/operations', icon: Calendar, label: 'Operations' },
-    { to: '/super-admin/engagement', icon: Award, label: 'Engagement' },
-    { to: '/super-admin/leaderboard', icon: Trophy, label: 'Leaderboard' },
-    { to: '/super-admin/announcements', icon: Megaphone, label: 'Announcements' },
-    { to: '/super-admin/community', icon: Users, label: 'Community' },
-    { to: '/super-admin/feedback', icon: MessageSquareText, label: 'Feedback & Suggestions' },
-    { to: '/super-admin/problem-statements', icon: FileText, label: 'Problem Statement Management' },
-    { to: '/super-admin/admins', icon: ShieldCheck, label: 'Admin Management' },
-    { to: '/super-admin/reports', icon: TrendingUp, label: 'Reports & Analytics' },
-    { to: '/super-admin/profile', icon: User, label: 'Profile' },
-    { to: '/super-admin/settings', icon: Sliders, label: 'Settings' },
+  const superAdminNavigation = [
+    {
+      title: 'Super Control',
+      items: [
+        { to: '/super-admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      ]
+    },
+    {
+      title: 'Core Management',
+      items: [
+        { to: '/super-admin/onboarding', icon: UserCheck, label: 'Onboarding Management' },
+        { to: '/super-admin/questionnaire-management', icon: ClipboardList, label: 'Questionnaire Management' },
+        { to: '/super-admin/interns', icon: Users, label: 'Intern Management' },
+        { to: '/super-admin/learning', icon: BookOpen, label: 'Learning Management' },
+        { to: '/super-admin/operations', icon: Calendar, label: 'Operations' },
+      ]
+    },
+    {
+      title: 'Engagement',
+      items: [
+        { to: '/super-admin/engagement', icon: Award, label: 'Engagement' },
+        { to: '/super-admin/leaderboard', icon: Trophy, label: 'Leaderboard' },
+        { to: '/super-admin/announcements', icon: Megaphone, label: 'Announcements' },
+        { to: '/super-admin/community', icon: Users, label: 'Community' },
+        { to: '/super-admin/feedback', icon: MessageSquareText, label: 'Feedback & Suggestions' },
+      ]
+    },
+    {
+      title: 'Administration',
+      items: [
+        { to: '/super-admin/problem-statements', icon: FileText, label: 'Problem Statement Management' },
+        { to: '/super-admin/admins', icon: ShieldCheck, label: 'Admin Management' },
+        { to: '/super-admin/reports', icon: TrendingUp, label: 'Reports & Analytics' },
+        { to: '/super-admin/profile', icon: User, label: 'Profile' },
+        { to: '/super-admin/settings', icon: Sliders, label: 'Settings' },
+      ]
+    }
   ];
 
+  const isRouteActive = (itemTo) => {
+    if (itemTo === '/super-admin/dashboard') return location.pathname === itemTo;
+    return location.pathname === itemTo || location.pathname.startsWith(itemTo);
+  };
+
   return (
-    <div className="min-h-screen bg-[#F7F7F7] flex flex-col">
-      <header className="bg-white border-b border-[#EDEDED] sticky top-0 z-30 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] flex items-center justify-center shadow-md shadow-[#FF3D00]/20">
-              <ShieldAlert className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <span className="font-bold text-lg text-[#0D0D0D] tracking-tight block leading-none">AI APEX</span>
-              <span className="text-xs text-[#FF3D00] font-extrabold uppercase">SUPER ADMIN CONSOLE</span>
-            </div>
-          </div>
-          <div className="flex items-center space-x-4">
-            <span className="text-sm font-semibold text-[#0D0D0D]">Super Admin</span>
-            <button
-              onClick={signOut}
-              className="flex items-center gap-2 text-sm font-medium text-[#9A9A9A] hover:text-[#FF3D00] px-3 py-2 rounded-xl hover:bg-[#F7F7F7] transition-colors"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>Logout</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex gap-8">
-        {/* Collapsible Super Admin Sidebar - Main Modules Only */}
-        <aside 
-          className={`shrink-0 hidden md:block transition-all duration-300 ${
-            isSidebarCollapsed ? 'w-20' : 'w-[280px]'
-          }`}
-        >
-          <div className="bg-white border border-[#EDEDED] rounded-2xl p-4 shadow-sm sticky top-24 space-y-1 max-h-[calc(100vh-120px)] overflow-y-auto relative group">
-            <div className="flex items-center justify-between px-2 py-1.5 mb-1">
-              {!isSidebarCollapsed ? (
-                <p className="text-xs font-semibold text-[#9A9A9A] uppercase tracking-wider">SUPER CONTROL</p>
-              ) : (
-                <p className="text-[10px] font-bold text-[#FF3D00] uppercase tracking-tighter mx-auto">SC</p>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-                className="p-1.5 rounded-lg bg-[#F7F7F7] hover:bg-[#FF8A00]/10 hover:text-[#FF8A00] text-[#9A9A9A] border border-[#EDEDED] transition-all ml-auto"
-              >
-                {isSidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-              </button>
-            </div>
-
-            {navigation.map((item) => {
-              const isCurrentActive = location.pathname === item.to || (item.to !== '/super-admin/dashboard' && location.pathname.startsWith(item.to));
-              return (
-                <NavItem 
-                  key={item.to} 
-                  {...item} 
-                  isCollapsed={isSidebarCollapsed}
-                  isActive={isCurrentActive}
-                />
-              );
-            })}
-          </div>
-        </aside>
-
-        <main className="flex-1 min-w-0">
-          <Outlet />
-        </main>
-      </div>
-    </div>
+    <SharedDashboardLayout 
+      portalName="Super Admin Console"
+      roleColor="from-[#FF8A00] to-[#FF3D00]" 
+      roleLabel="Super Admin"
+      roleIcon={ShieldAlert}
+      navigationGroups={superAdminNavigation}
+      isRouteActiveFunc={isRouteActive}
+    />
   );
 }

@@ -8,16 +8,17 @@ import React from 'react';
  * Red = Missing / Overdue
  */
 export function TodayStatusCard({
-  attendanceStatus = 'not_marked', // 'present' | 'late' | 'not_marked' | 'absent'
-  checkInTime = null,
-  checkOutTime = null,
-  diaryStatus = 'pending', // 'submitted' | 'pending' | 'missing'
-  pendingWorkCount = 0,
-  todayTodoCount = 0
+  attendanceStatus, // 'present' | 'late' | 'not_marked' | 'absent' | undefined
+  checkInTime,
+  checkOutTime,
+  diaryStatus, // 'submitted' | 'pending' | 'missing' | undefined
+  pendingWorkCount, // number | undefined
+  todayTodoCount // number | undefined
 }) {
   // Color Indicator Resolvers
   const getAttendanceIndicator = (st) => {
-    const status = (st || 'not_marked').toLowerCase();
+    if (st === undefined) return { label: 'Not Available', color: 'bg-gray-300', text: 'text-gray-500', bg: 'bg-gray-50 border-gray-200' };
+    const status = st.toLowerCase();
     if (status === 'present') return { label: 'Present', color: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' };
     if (status === 'late') return { label: 'Late', color: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' };
     if (status === 'absent') return { label: 'Absent', color: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50 border-red-200' };
@@ -25,7 +26,8 @@ export function TodayStatusCard({
   };
 
   const getDiaryIndicator = (st) => {
-    const status = (st || 'pending').toLowerCase();
+    if (st === undefined) return { label: 'Not Available', color: 'bg-gray-300', text: 'text-gray-500', bg: 'bg-gray-50 border-gray-200' };
+    const status = st.toLowerCase();
     if (status === 'submitted' || status === 'approved') return { label: 'Completed', color: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' };
     if (status === 'missing') return { label: 'Missing', color: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50 border-red-200' };
     return { label: 'Pending Today', color: 'bg-[#FF8A00]', text: 'text-[#FF8A00]', bg: 'bg-orange-50 border-orange-200' };
@@ -75,14 +77,14 @@ export function TodayStatusCard({
 
         {/* Pending Work Count */}
         <div className={`p-3.5 border rounded-xl flex items-center justify-between ${
-          pendingWorkCount > 0 ? 'bg-orange-50 border-orange-200' : 'bg-emerald-50 border-emerald-200'
+          pendingWorkCount === undefined ? 'bg-gray-50 border-gray-200' : (pendingWorkCount > 0 ? 'bg-orange-50 border-orange-200' : 'bg-emerald-50 border-emerald-200')
         }`}>
           <div className="space-y-1">
             <span className="text-[10px] font-bold text-[#737373] uppercase tracking-wider block">Pending Work</span>
             <div className="flex items-center gap-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${pendingWorkCount > 0 ? 'bg-[#FF8A00]' : 'bg-emerald-500'}`} />
-              <span className={`text-xs font-bold ${pendingWorkCount > 0 ? 'text-[#FF8A00]' : 'text-emerald-700'}`}>
-                {pendingWorkCount} {pendingWorkCount === 1 ? 'Task' : 'Tasks'}
+              <span className={`w-2.5 h-2.5 rounded-full ${pendingWorkCount === undefined ? 'bg-gray-300' : (pendingWorkCount > 0 ? 'bg-[#FF8A00]' : 'bg-emerald-500')}`} />
+              <span className={`text-xs font-bold ${pendingWorkCount === undefined ? 'text-gray-500' : (pendingWorkCount > 0 ? 'text-[#FF8A00]' : 'text-emerald-700')}`}>
+                {pendingWorkCount === undefined ? 'Not Available' : `${pendingWorkCount} ${pendingWorkCount === 1 ? 'Task' : 'Tasks'}`}
               </span>
             </div>
           </div>
@@ -90,14 +92,14 @@ export function TodayStatusCard({
 
         {/* Today's To-do Count */}
         <div className={`p-3.5 border rounded-xl flex items-center justify-between ${
-          todayTodoCount > 0 ? 'bg-orange-50 border-orange-200' : 'bg-emerald-50 border-emerald-200'
+          todayTodoCount === undefined ? 'bg-gray-50 border-gray-200' : (todayTodoCount > 0 ? 'bg-orange-50 border-orange-200' : 'bg-emerald-50 border-emerald-200')
         }`}>
           <div className="space-y-1">
             <span className="text-[10px] font-bold text-[#737373] uppercase tracking-wider block">Today's To-Dos</span>
             <div className="flex items-center gap-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${todayTodoCount > 0 ? 'bg-[#FF8A00]' : 'bg-emerald-500'}`} />
-              <span className={`text-xs font-bold ${todayTodoCount > 0 ? 'text-[#FF8A00]' : 'text-emerald-700'}`}>
-                {todayTodoCount} Items
+              <span className={`w-2.5 h-2.5 rounded-full ${todayTodoCount === undefined ? 'bg-gray-300' : (todayTodoCount > 0 ? 'bg-[#FF8A00]' : 'bg-emerald-500')}`} />
+              <span className={`text-xs font-bold ${todayTodoCount === undefined ? 'text-gray-500' : (todayTodoCount > 0 ? 'text-[#FF8A00]' : 'text-emerald-700')}`}>
+                {todayTodoCount === undefined ? 'Not Available' : `${todayTodoCount} Items`}
               </span>
             </div>
           </div>

@@ -3,13 +3,11 @@ export interface PersonalInformation {
   email: string; // read-only
   internId: string; // read-only
   mobile: string;
-  whatsappNumber: string;
   dateOfBirth: string;
   gender: string;
   city: string;
-  state: string;
-  country: string;
-  professionalBio: string;
+  linkedInUrl: string;
+  githubUrl: string;
 }
 
 export interface InternshipInfoReadOnly {

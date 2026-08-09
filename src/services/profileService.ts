@@ -5,6 +5,10 @@ import { ProfileData } from '../types/profileTypes';
  * Fetch intern profile details
  */
 export async function fetchProfileData(userId: string): Promise<ProfileData> {
+  if (!userId) {
+    throw new Error('User ID is required to fetch profile data.');
+  }
+
   try {
     const { data: profile, error } = await supabase
       .from('profiles')
@@ -25,7 +29,39 @@ export async function fetchProfileData(userId: string): Promise<ProfileData> {
       throw notFoundErr;
     }
 
-    return mapDbProfileToProfileData(profile);
+    let assignedAdminName = 'Unassigned';
+
+    // Secondary secure lookup for Assigned Admin
+    if (profile.problem_statement_id) {
+      const { data: adminAlloc, error: allocError } = await supabase
+        .from('admin_problem_statements')
+        .select('admin_id')
+        .eq('problem_statement_id', profile.problem_statement_id)
+        .limit(1)
+        .maybeSingle();
+
+      if (allocError) {
+        throw allocError;
+      }
+
+      if (adminAlloc?.admin_id) {
+        const { data: adminProfile, error: adminError } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', adminAlloc.admin_id)
+          .maybeSingle();
+        
+        if (adminError) {
+          throw adminError;
+        }
+
+        if (adminProfile) {
+          assignedAdminName = adminProfile.full_name;
+        }
+      }
+    }
+
+    return mapDbProfileToProfileData(profile, assignedAdminName);
   } catch (err) {
     console.error('[ProfileService] Error fetching profile:', err);
     throw err;
@@ -42,13 +78,11 @@ export async function updatePersonalInformation(userId: string, personalData: Pa
       .update({
         full_name: personalData.fullName,
         mobile: personalData.mobile,
-        whatsapp_number: personalData.whatsappNumber,
         date_of_birth: personalData.dateOfBirth ? personalData.dateOfBirth : null,
         gender: personalData.gender,
         city: personalData.city,
-        state: personalData.state,
-        country: personalData.country,
-        professional_bio: personalData.professionalBio,
+        linkedin_url: personalData.linkedInUrl,
+        github_url: personalData.githubUrl,
         updated_at: new Date().toISOString()
       })
       .eq('id', userId)
@@ -67,28 +101,43 @@ export async function updatePersonalInformation(userId: string, personalData: Pa
   }
 }
 
-function mapDbProfileToProfileData(p: any): ProfileData {
+function mapDbProfileToProfileData(p: any, assignedAdminName: string = 'Unassigned'): ProfileData {
   const shortId = p.id ? `AAL-INT-${p.id.slice(0, 5).toUpperCase()}` : '';
+  
+  const personal = {
+    fullName: p.full_name || '',
+    email: p.email || '',
+    internId: shortId,
+    mobile: p.mobile || '',
+    dateOfBirth: p.date_of_birth || '',
+    gender: p.gender || '',
+    city: p.city || '',
+    linkedInUrl: p.linkedin_url || '',
+    githubUrl: p.github_url || ''
+  };
+
+  // Dynamic Profile Completion Calculation
+  const fieldsToCheck = [
+    personal.fullName,
+    personal.mobile,
+    personal.dateOfBirth,
+    personal.gender,
+    personal.city,
+    personal.linkedInUrl,
+    personal.githubUrl
+  ];
+  
+  const filledFields = fieldsToCheck.filter(field => field && field.toString().trim() !== '').length;
+  const completionPercentage = Math.round((filledFields / fieldsToCheck.length) * 100);
+
   return {
     id: p.id,
     profilePhotoUrl: p.profile_photo_url || undefined,
-    completionPercentage: p.completion_percentage || 0,
-    personal: {
-      fullName: p.full_name || '',
-      email: p.email || '',
-      internId: shortId,
-      mobile: p.mobile || '',
-      whatsappNumber: p.whatsapp_number || '',
-      dateOfBirth: p.date_of_birth || '',
-      gender: p.gender || '',
-      city: p.city || '',
-      state: p.state || '',
-      country: p.country || '',
-      professionalBio: p.professional_bio || ''
-    },
+    completionPercentage,
+    personal,
     internship: {
       problemStatement: p.problem_statements?.title || 'Unassigned',
-      assignedAdmin: p.assigned_admin || 'Unassigned',
+      assignedAdmin: assignedAdminName,
       status: p.account_status || 'inactive',
       internshipStartDate: p.internship_start_date || '',
       internshipEndDate: p.internship_end_date || '',

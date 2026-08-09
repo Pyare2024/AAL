@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { fetchProfileData, updatePersonalInformation } from '../../services/profileService';
-import { ProfileHeader, PersonalInformationCard } from '../../components/profile/ProfileComponents';
+import { ProfileHeader, ProfileSocialLinks, PersonalInformationCard } from '../../components/profile/ProfileComponents';
 import { ProfileData, PersonalInformation } from '../../types/profileTypes';
 import { LoadingState, ErrorState } from '../../components/productivity/CommonStates';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
@@ -13,16 +13,20 @@ export function ProfilePage() {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const userId = (user as any)?.id || 'demo-user';
+      const userId = (user as any)?.id;
+      if (!userId) {
+        throw new Error('Authentication error: User ID not found.');
+      }
       const data = await fetchProfileData(userId);
       setProfile(data);
     } catch (err: any) {
-      setErrorMsg('Failed to load profile data.');
+      setErrorMsg(err.message || 'Failed to load profile data.');
     } finally {
       setLoading(false);
     }
@@ -36,22 +40,31 @@ export function ProfilePage() {
     setFeedback(null);
     if (!profile) return;
 
-    const userId = (user as any)?.id || 'demo-user';
-    const res = await updatePersonalInformation(userId, updatedPersonal);
-    if (res.success) {
-      setProfile({
-        ...profile,
-        personal: updatedPersonal
-      });
-      setIsEditing(false);
-      setFeedback({ type: 'success', message: res.message });
-    } else {
-      setFeedback({ type: 'error', message: res.message });
+    const userId = (user as any)?.id;
+    if (!userId) {
+      setFeedback({ type: 'error', message: 'Authentication error: Cannot update profile without valid User ID.' });
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const res = await updatePersonalInformation(userId, updatedPersonal);
+      if (res.success) {
+        setFeedback({ type: 'success', message: res.message });
+        setIsEditing(false);
+        await loadData();
+      } else {
+        setFeedback({ type: 'error', message: res.message || 'Unable to save changes.' });
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err.message || 'Unable to save changes.' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
   if (loading) return <div className="p-6"><LoadingState message="Loading Profile..." /></div>;
-  if (errorMsg || !profile) return <div className="p-6"><ErrorState message={errorMsg || 'Profile not found.'} onRetry={loadData} /></div>;
+  if (errorMsg || !profile) return <div className="p-6"><ErrorState message={errorMsg || 'Unable to load profile'} onRetry={loadData} /></div>;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-2 sm:p-4">
@@ -65,17 +78,21 @@ export function ProfilePage() {
         </div>
       )}
 
-      {/* Section 1: Profile Header */}
+      {/* Section 1: Profile Header (Hero) */}
       <ProfileHeader
         profile={profile}
         isEditing={isEditing}
         onToggleEdit={() => setIsEditing(!isEditing)}
       />
 
-      {/* Section 2: Personal Information */}
+      {/* Section 2: Social Links */}
+      {!isEditing && <ProfileSocialLinks personal={profile.personal} />}
+
+      {/* Section 3: Personal Information Grid & Edit Form */}
       <PersonalInformationCard
-        personal={profile.personal}
+        profile={profile}
         isEditing={isEditing}
+        isSaving={isSaving}
         onSave={handleSavePersonal}
         onCancel={() => setIsEditing(false)}
       />

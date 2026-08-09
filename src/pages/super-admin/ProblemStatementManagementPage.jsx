@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../features/auth/context/AuthContext';
+import { problemStatementService } from '../../services/problemStatementService';
 import {
   FileText,
   Plus,
@@ -18,24 +18,9 @@ import {
   AlertCircle,
   RefreshCw,
   X,
-  ShieldAlert
+  ShieldAlert,
+  Trash2
 } from 'lucide-react';
-
-// Default initial 12 records if database is empty/unseeded
-const INITIAL_DEFAULT_STATEMENTS = [
-  { title: 'ASG Ecosystem', slug: 'asg-ecosystem', description: 'Comprehensive framework for managing and connecting ASG digital assets, platforms, and services.', status: 'active' },
-  { title: 'Career Intelligence Platform', slug: 'career-intelligence-platform', description: 'AI-driven career guidance, skill mapping, and personalized growth trajectory recommendations.', status: 'active' },
-  { title: 'Digital Economy', slug: 'digital-economy', description: 'Innovations in digital monetization, decentralization, and web-based financial workflows.', status: 'active' },
-  { title: 'Energy as a Distribution', slug: 'energy-as-a-distribution', description: 'Next-generation grid distribution models, sustainable energy tracking, and power usage optimization.', status: 'active' },
-  { title: 'Events Industry', slug: 'events-industry', description: 'Smart event management, virtual-hybrid conferencing tech, and automated ticketing solutions.', status: 'active' },
-  { title: 'Gaming', slug: 'gaming', description: 'Interactive gaming infrastructure, web3 gaming economies, and real-time multiplayer networking.', status: 'active' },
-  { title: 'HoReCa', slug: 'horeca', description: 'Hotel, Restaurant, and Cafe automation, supply chain traceability, and customer experience tech.', status: 'active' },
-  { title: 'Kids Sector', slug: 'kids-sector', description: 'Safe educational tools, child-friendly interaction platforms, and digital learning ecosystems.', status: 'active' },
-  { title: 'Mobility', slug: 'mobility', description: 'Electric vehicle management, urban transport networks, and micro-mobility optimization platforms.', status: 'active' },
-  { title: 'Social Work and Sustainability', slug: 'social-work-and-sustainability', description: 'Impact measurement engines, ESG compliance tools, and community empowerment frameworks.', status: 'active' },
-  { title: 'Sports and Fitness', slug: 'sports-and-fitness', description: 'Athletic performance analytics, wearable IoT integration, and community fitness challenges.', status: 'active' },
-  { title: 'Temple Economy', slug: 'temple-economy', description: 'Pilgrimage logistics, religious tourism management, and traditional economic ecosystem digitization.', status: 'active' },
-];
 
 export function ProblemStatementManagementPage() {
   const { user } = useAuth();
@@ -98,92 +83,11 @@ export function ProblemStatementManagementPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      // 1. Fetch main problem statements
-      const { data: psData, error: psError } = await supabase
-        .from('problem_statements')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (psError) throw psError;
-
-      let records = psData || [];
-
-      // Seed initial 12 records if table is completely empty
-      if (records.length === 0) {
-        const seedPayload = INITIAL_DEFAULT_STATEMENTS.map((item) => ({
-          ...item,
-          created_by: user?.id || null,
-        }));
-
-        const { data: seededData, error: seedErr } = await supabase
-          .from('problem_statements')
-          .insert(seedPayload)
-          .select();
-
-        if (!seedErr && seededData) {
-          records = seededData;
-        } else {
-          // If insert fails (e.g. mock environment without DB write access), fallback to local defaults with temp IDs
-          records = INITIAL_DEFAULT_STATEMENTS.map((item, idx) => ({
-            id: `default-${idx + 1}`,
-            ...item,
-            created_by: user?.id || 'super_admin_system',
-            created_at: new Date(Date.now() - (12 - idx) * 86400000).toISOString(),
-            updated_at: new Date().toISOString(),
-          }));
-        }
-      }
-
-      // 2. Fetch counts from relationship tables
-      // Admin allocations count
-      const { data: adminCounts } = await supabase
-        .from('admin_problem_statements')
-        .select('problem_statement_id');
-
-      // Intern allocations count from profiles.problem_statement_id
-      const { data: internCounts } = await supabase
-        .from('profiles')
-        .select('problem_statement_id')
-        .not('problem_statement_id', 'is', null);
-
-      // Aggregate counts by problem_statement_id
-      const adminCountMap = {};
-      (adminCounts || []).forEach((row) => {
-        if (row.problem_statement_id) {
-          adminCountMap[row.problem_statement_id] = (adminCountMap[row.problem_statement_id] || 0) + 1;
-        }
-      });
-
-      const internCountMap = {};
-      (internCounts || []).forEach((row) => {
-        if (row.problem_statement_id) {
-          internCountMap[row.problem_statement_id] = (internCountMap[row.problem_statement_id] || 0) + 1;
-        }
-      });
-
-      // Merge counts into statement records
-      const enrichedRecords = records.map((item) => ({
-        ...item,
-        allocated_admins: adminCountMap[item.id] || 0,
-        allocated_interns: internCountMap[item.id] || 0,
-      }));
-
-      setProblemStatements(enrichedRecords);
+      const records = await problemStatementService.fetchProblemStatements();
+      setProblemStatements(records);
     } catch (err) {
       console.error('Error fetching problem statements:', err);
-      setErrorMsg(err.message || 'Failed to connect to Supabase to fetch Problem Statements.');
-      
-      // Fallback local display if network failure
-      const fallbackRecords = INITIAL_DEFAULT_STATEMENTS.map((item, idx) => ({
-        id: `default-${idx + 1}`,
-        ...item,
-        created_by: user?.id || 'super_admin_system',
-        created_at: new Date(Date.now() - (12 - idx) * 86400000).toISOString(),
-        updated_at: new Date().toISOString(),
-        allocated_admins: 0,
-        allocated_interns: 0,
-      }));
-      setProblemStatements(fallbackRecords);
+      setErrorMsg(err.message || 'Failed to connect to fetch Problem Statements.');
     } finally {
       setLoading(false);
     }
@@ -245,35 +149,13 @@ export function ProblemStatementManagementPage() {
     };
 
     try {
-      const { data, error } = await supabase
-        .from('problem_statements')
-        .insert([payload])
-        .select()
-        .single();
-
-      if (error) throw error;
-
+      await problemStatementService.createProblemStatement(payload);
       setSuccessMsg(`Problem Statement "${payload.title}" created successfully!`);
       closeModal();
       await fetchProblemStatements();
     } catch (err) {
       console.error('Error creating Problem Statement:', err);
-      // If mock environment DB error, perform local state add so UI functions smoothly
-      if (err.message) {
-        const localNew = {
-          id: `ps-${Date.now()}`,
-          ...payload,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          allocated_admins: 0,
-          allocated_interns: 0,
-        };
-        setProblemStatements((prev) => [localNew, ...prev]);
-        setSuccessMsg(`Problem Statement "${payload.title}" created successfully!`);
-        closeModal();
-      } else {
-        setErrorMsg(err.message || 'Failed to create Problem Statement in Supabase.');
-      }
+      setErrorMsg(err.message || 'Failed to create Problem Statement.');
     } finally {
       setIsSubmitting(false);
     }
@@ -302,28 +184,17 @@ export function ProblemStatementManagementPage() {
       slug: formData.slug.trim(),
       description: formData.description.trim(),
       status: formData.status,
-      updated_at: new Date().toISOString(),
     };
 
     try {
-      const { error } = await supabase
-        .from('problem_statements')
-        .update(payload)
-        .eq('id', selectedItem.id);
-
-      if (error) throw error;
-
+      await problemStatementService.updateProblemStatement(selectedItem.id, payload);
       setSuccessMsg(`Problem Statement "${payload.title}" updated successfully!`);
       setConfirmAction(null);
       closeModal();
       await fetchProblemStatements();
     } catch (err) {
       console.error('Error updating Problem Statement:', err);
-      // Fallback local update
-      setProblemStatements((prev) =>
-        prev.map((ps) => (ps.id === selectedItem.id ? { ...ps, ...payload } : ps))
-      );
-      setSuccessMsg(`Problem Statement "${payload.title}" updated successfully!`);
+      setErrorMsg(err.message || 'Failed to update Problem Statement.');
       setConfirmAction(null);
       closeModal();
     } finally {
@@ -333,36 +204,37 @@ export function ProblemStatementManagementPage() {
 
   // Trigger Activate/Deactivate Confirmation
   const handleToggleStatusClick = (item) => {
-    const newStatus = item.status === 'active' ? 'inactive' : 'active';
-    const isDeactivating = newStatus === 'inactive';
-
     setConfirmAction({
-      type: 'toggle_status',
+      type: 'toggle',
       item,
-      newStatus,
-      title: isDeactivating ? 'Confirm Deactivation' : 'Confirm Activation',
-      message: isDeactivating
-        ? `Are you sure you want to deactivate "${item.title}"? Deactivation will preserve all existing Admin and Intern allocations, but it will prevent new allocations.`
-        : `Are you sure you want to activate "${item.title}"? It will become available for new allocations.`,
+      newStatus: item.status === 'active' ? 'inactive' : 'active',
+      title: item.status === 'active' ? 'Deactivate Problem Statement' : 'Activate Problem Statement',
+      message:
+        item.status === 'active'
+          ? `Are you sure you want to deactivate "${item.title}"? Deactivation will preserve all existing Admin and Intern allocations, but it will prevent new allocations.`
+          : `Are you sure you want to activate "${item.title}"? It will become available for new allocations.`,
+    });
+  };
+
+  const handleDeleteClick = (item) => {
+    setConfirmAction({
+      type: 'delete',
+      item,
+      title: 'Delete Problem Statement?',
+      message: `You are about to permanently delete '${item.title}'. This action cannot be undone.`,
     });
   };
 
   // Execute Status Toggle after Confirmation
   const executeToggleStatus = async () => {
-    if (!confirmAction?.item || isSubmitting) return;
+    if (!confirmAction?.item || confirmAction.type !== 'toggle' || isSubmitting) return;
     const { item, newStatus } = confirmAction;
 
     setIsSubmitting(true);
     setErrorMsg(null);
 
     try {
-      const { error } = await supabase
-        .from('problem_statements')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', item.id);
-
-      if (error) throw error;
-
+      await problemStatementService.updateProblemStatementStatus(item.id, newStatus);
       setSuccessMsg(
         `Problem Statement "${item.title}" has been ${newStatus === 'active' ? 'activated' : 'deactivated'}.`
       );
@@ -370,15 +242,29 @@ export function ProblemStatementManagementPage() {
       await fetchProblemStatements();
     } catch (err) {
       console.error('Error updating status:', err);
-      // Fallback local update
-      setProblemStatements((prev) =>
-        prev.map((ps) =>
-          ps.id === item.id ? { ...ps, status: newStatus, updated_at: new Date().toISOString() } : ps
-        )
-      );
-      setSuccessMsg(
-        `Problem Statement "${item.title}" has been ${newStatus === 'active' ? 'activated' : 'deactivated'}.`
-      );
+      setErrorMsg(err.message || 'Failed to update status.');
+      setConfirmAction(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Execute Delete after Confirmation
+  const executeDelete = async () => {
+    if (!confirmAction?.item || confirmAction.type !== 'delete' || isSubmitting) return;
+    const { item } = confirmAction;
+
+    setIsSubmitting(true);
+    setErrorMsg(null);
+
+    try {
+      await problemStatementService.deleteProblemStatement(item.id);
+      setSuccessMsg(`'${item.title}' has been permanently deleted.`);
+      setConfirmAction(null);
+      await fetchProblemStatements();
+    } catch (err) {
+      console.error('Error deleting problem statement:', err);
+      setErrorMsg(err.message || 'Unable to delete Problem Statement. Please try again.');
       setConfirmAction(null);
     } finally {
       setIsSubmitting(false);
@@ -712,6 +598,15 @@ export function ProblemStatementManagementPage() {
                             <span>Activate</span>
                           </button>
                         )}
+                        
+                        {/* Delete */}
+                        <button
+                          onClick={() => handleDeleteClick(item)}
+                          title="Delete Problem Statement"
+                          className="p-2 text-[#9A9A9A] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer ml-1"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -981,52 +876,99 @@ export function ProblemStatementManagementPage() {
         </div>
       )}
 
-      {/* CONFIRMATION DIALOG MODAL */}
+      {/* CONFIRMATION DIALOG FOR TOGGLE / DELETE */}
       {confirmAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white border border-[#EDEDED] rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 text-left">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 shrink-0">
-                <ShieldAlert className="h-6 w-6" />
+          <div className="bg-white border border-[#EDEDED] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-6 border-b border-[#EDEDED]">
+              <div className="flex items-center gap-3 mb-2">
+                <div
+                  className={`p-2 rounded-xl text-white ${
+                    confirmAction.type === 'delete'
+                      ? 'bg-red-500'
+                      : confirmAction.newStatus === 'inactive'
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500'
+                  }`}
+                >
+                  {confirmAction.type === 'delete' ? (
+                    <Trash2 className="h-5 w-5" />
+                  ) : confirmAction.newStatus === 'inactive' ? (
+                    <XCircle className="h-5 w-5" />
+                  ) : (
+                    <CheckCircle2 className="h-5 w-5" />
+                  )}
+                </div>
+                <h3 className="text-lg font-bold text-[#0D0D0D]">
+                  {confirmAction.type === 'delete' && (confirmAction.item.allocated_admins > 0 || confirmAction.item.allocated_interns > 0)
+                    ? 'Cannot Delete Problem Statement'
+                    : confirmAction.title}
+                </h3>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-[#0D0D0D]">{confirmAction.title}</h3>
-                <p className="text-xs text-[#9A9A9A]">Super Admin action verification</p>
-              </div>
+
+              {confirmAction.type === 'delete' && (confirmAction.item.allocated_admins > 0 || confirmAction.item.allocated_interns > 0) ? (
+                <div className="mt-4 bg-red-50 border border-red-100 rounded-xl p-4">
+                  <p className="text-sm font-semibold text-red-800 mb-2">
+                    This Problem Statement cannot be deleted because it has existing allocations or history.
+                  </p>
+                  <ul className="text-xs text-red-700 list-disc list-inside space-y-1 mb-3">
+                    {confirmAction.item.allocated_interns > 0 && <li>Current interns allocated: {confirmAction.item.allocated_interns}</li>}
+                    {confirmAction.item.allocated_admins > 0 && <li>Admins assigned: {confirmAction.item.allocated_admins}</li>}
+                  </ul>
+                  <p className="text-xs font-semibold text-red-800">Deactivate this Problem Statement instead.</p>
+                </div>
+              ) : confirmAction.type === 'delete' ? (
+                <div className="mt-4">
+                  <div className="bg-[#F7F7F7] p-3 rounded-lg border border-[#EDEDED] mb-3">
+                    <p className="text-sm font-bold text-[#0D0D0D]">{confirmAction.item.title}</p>
+                    <p className="text-xs text-[#9A9A9A] capitalize">Status: {confirmAction.item.status}</p>
+                    <p className="text-xs text-[#9A9A9A]">Allocated Interns: 0</p>
+                    <p className="text-xs text-[#9A9A9A]">Allocated Admins: 0</p>
+                  </div>
+                  <p className="text-sm text-red-600 font-semibold">{confirmAction.message}</p>
+                </div>
+              ) : (
+                <p className="text-sm text-[#9A9A9A] mt-2">{confirmAction.message}</p>
+              )}
             </div>
-
-            <p className="text-sm text-[#0D0D0D] bg-[#F7F7F7] p-3.5 rounded-xl border border-[#EDEDED] leading-relaxed">
-              {confirmAction.message}
-            </p>
-
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="px-6 py-4 bg-[#F7F7F7] flex items-center justify-end gap-3">
               <button
-                type="button"
                 onClick={() => setConfirmAction(null)}
+                className="px-4 py-2 text-sm font-bold text-[#0D0D0D] bg-white border border-[#EDEDED] rounded-xl hover:bg-gray-50 transition-colors cursor-pointer"
                 disabled={isSubmitting}
-                className="px-4 py-2 bg-white border border-[#EDEDED] hover:bg-[#F7F7F7] text-[#0D0D0D] text-sm font-semibold rounded-xl transition-all cursor-pointer"
               >
-                Cancel
+                {confirmAction.type === 'delete' && (confirmAction.item.allocated_admins > 0 || confirmAction.item.allocated_interns > 0) ? 'Close' : 'Cancel'}
               </button>
-              <button
-                type="button"
-                onClick={
-                  confirmAction.type === 'update'
-                    ? executeEditSubmit
-                    : executeToggleStatus
-                }
-                disabled={isSubmitting}
-                className="px-5 py-2 bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] text-white text-sm font-bold rounded-xl shadow-md shadow-[#FF3D00]/20 hover:opacity-95 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {isSubmitting ? (
-                  <>
+              
+              {!(confirmAction.type === 'delete' && (confirmAction.item.allocated_admins > 0 || confirmAction.item.allocated_interns > 0)) && (
+                <button
+                  onClick={
+                    confirmAction.type === 'update' 
+                      ? executeEditSubmit 
+                      : (confirmAction.type === 'delete' ? executeDelete : executeToggleStatus)
+                  }
+                  disabled={isSubmitting}
+                  className={`px-6 py-2 text-sm font-bold text-white rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-2 ${
+                    confirmAction.type === 'delete'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : confirmAction.newStatus === 'inactive'
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:shadow-lg'
+                      : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:shadow-lg'
+                  }`}
+                >
+                  {isSubmitting ? (
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <span>Confirm Action</span>
-                )}
-              </button>
+                  ) : confirmAction.type === 'delete' ? (
+                    'Delete Permanently'
+                  ) : confirmAction.newStatus === 'inactive' ? (
+                    'Yes, Deactivate'
+                  ) : confirmAction.type === 'update' ? (
+                    'Confirm Action'
+                  ) : (
+                    'Yes, Activate'
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

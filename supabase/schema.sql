@@ -622,11 +622,12 @@ ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Baseline Policies
-CREATE POLICY "Authenticated users can select profiles" ON public.profiles FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated users can select profiles" ON public.profiles FOR SELECT TO authenticated USING (auth.uid() = id OR public.is_super_admin());
 CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT TO authenticated WITH CHECK (auth.uid() = id);
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE TO authenticated USING (auth.uid() = id);
 
-CREATE POLICY "Authenticated users can read user_roles" ON public.user_roles FOR SELECT TO authenticated USING (true);
+-- User Roles
+CREATE POLICY "Authenticated users can read user_roles" ON public.user_roles FOR SELECT TO authenticated USING (auth.uid() = user_id OR public.is_super_admin());
 CREATE POLICY "Users can insert own role during registration" ON public.user_roles FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 
 
@@ -742,3 +743,341 @@ INSERT INTO storage.buckets (id, name, public) VALUES
   ('community-attachments', 'community-attachments', false),
   ('onboarding-documents', 'onboarding-documents', false)
 ON CONFLICT (id) DO NOTHING;
+
+-- ==============================================================================
+-- 15. PROBLEM STATEMENT COUNTS RPC
+-- ==============================================================================
+
+CREATE OR REPLACE FUNCTION public.get_problem_statements_with_counts()
+RETURNS TABLE (
+    id UUID,
+    title TEXT,
+    slug TEXT,
+    description TEXT,
+    status account_status,
+    created_by UUID,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
+    allocated_admins BIGINT,
+    allocated_interns BIGINT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+BEGIN
+    -- Verify Super Admin authorization
+    IF NOT public.is_super_admin() THEN
+        RAISE EXCEPTION 'Access denied. Super Admin privileges required.';
+    END IF;
+
+    RETURN QUERY
+    SELECT 
+        ps.id,
+        ps.title,
+        ps.slug,
+        ps.description,
+        ps.status,
+        ps.created_by,
+        ps.created_at,
+        ps.updated_at,
+        (SELECT COUNT(DISTINCT aps.admin_id) FROM public.admin_problem_statements aps WHERE aps.problem_statement_id = ps.id) as allocated_admins,
+        (SELECT COUNT(DISTINCT p.id) FROM public.profiles p WHERE p.problem_statement_id = ps.id) as allocated_interns
+    FROM 
+        public.problem_statements ps
+    ORDER BY 
+        ps.created_at DESC;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_problem_statements_with_counts() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_problem_statements_with_counts() TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
+
+-- ==============================================================================
+-- 16. PROBLEM STATEMENT SAFE DELETE RPC
+-- ==============================================================================
+
+CREATE OR REPLACE FUNCTION public.delete_problem_statement_safe(p_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+DECLARE
+    v_intern_count INT;
+    v_admin_count INT;
+    v_history_count INT;
+    v_exists BOOLEAN;
+BEGIN
+    -- 1. Check Super Admin
+    IF NOT public.is_super_admin() THEN
+        RAISE EXCEPTION 'UNAUTHORIZED: Access denied. Super Admin privileges required.';
+    END IF;
+
+    -- 2. Check if Problem Statement exists
+    SELECT EXISTS(SELECT 1 FROM public.problem_statements WHERE id = p_id) INTO v_exists;
+    IF NOT v_exists THEN
+        RAISE EXCEPTION 'NOT_FOUND: Problem Statement not found.';
+    END IF;
+
+    -- 3. Check current intern allocations
+    SELECT COUNT(*) INTO v_intern_count FROM public.profiles WHERE problem_statement_id = p_id;
+    IF v_intern_count > 0 THEN
+        RAISE EXCEPTION 'DEPENDENCY: Cannot delete this Problem Statement because it has % current intern allocations. Deactivate it instead.', v_intern_count;
+    END IF;
+
+    -- 4. Check current admin allocations
+    SELECT COUNT(*) INTO v_admin_count FROM public.admin_problem_statements WHERE problem_statement_id = p_id;
+    IF v_admin_count > 0 THEN
+        RAISE EXCEPTION 'DEPENDENCY: Cannot delete this Problem Statement because it has % current admin allocations. Deactivate it instead.', v_admin_count;
+    END IF;
+
+    -- 5. Check historical allocations
+    SELECT COUNT(*) INTO v_history_count FROM public.intern_problem_statement_history WHERE problem_statement_id = p_id;
+    IF v_history_count > 0 THEN
+        RAISE EXCEPTION 'DEPENDENCY: Cannot delete this Problem Statement because it has % historical allocation records. Deactivate it instead to preserve platform audit history.', v_history_count;
+    END IF;
+
+    -- 6. Safe to delete
+    DELETE FROM public.problem_statements WHERE id = p_id;
+
+    RETURN TRUE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.delete_problem_statement_safe(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.delete_problem_statement_safe(UUID) TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
+
+-- ==============================================================================
+-- 17. ADMIN MANAGEMENT RPCS
+-- ==============================================================================
+
+-- 1. update_admin_with_assignments (Transactional Update)
+CREATE OR REPLACE FUNCTION public.update_admin_with_assignments(
+    p_admin_id UUID,
+    p_full_name TEXT,
+    p_mobile TEXT,
+    p_status TEXT,
+    p_ps_ids UUID[]
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+DECLARE
+    v_ps_id UUID;
+BEGIN
+    -- 1. Check Super Admin
+    IF NOT public.is_super_admin() THEN
+        RAISE EXCEPTION 'UNAUTHORIZED: Access denied. Super Admin privileges required.';
+    END IF;
+
+    -- 2. Update profile
+    UPDATE public.profiles
+    SET full_name = p_full_name,
+        mobile = p_mobile,
+        account_status = p_status,
+        updated_at = NOW()
+    WHERE id = p_admin_id;
+
+    -- 3. Delete old assignments
+    DELETE FROM public.admin_problem_statements
+    WHERE admin_id = p_admin_id;
+
+    -- 4. Insert new assignments
+    IF array_length(p_ps_ids, 1) > 0 THEN
+        FOREACH v_ps_id IN ARRAY p_ps_ids
+        LOOP
+            INSERT INTO public.admin_problem_statements (admin_id, problem_statement_id)
+            VALUES (p_admin_id, v_ps_id);
+        END LOOP;
+    END IF;
+
+    -- 5. Create Audit Log
+    BEGIN
+        INSERT INTO public.audit_logs (actor_id, action, entity_type, entity_id, new_data, created_at)
+        VALUES (auth.uid(), 'UPDATE_ADMIN_ACCOUNT', 'profiles', p_admin_id, 
+                jsonb_build_object('full_name', p_full_name, 'status', p_status, 'allocations', p_ps_ids), 
+                NOW());
+    EXCEPTION WHEN OTHERS THEN
+        -- Ignore audit log errors silently
+    END;
+
+    RETURN TRUE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.update_admin_with_assignments(UUID, TEXT, TEXT, TEXT, UUID[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.update_admin_with_assignments(UUID, TEXT, TEXT, TEXT, UUID[]) TO authenticated;
+
+-- 2. get_admin_kpis_and_list (Secure Aggregation)
+CREATE OR REPLACE FUNCTION public.get_admin_kpis_and_list()
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+DECLARE
+    v_total_admins INT;
+    v_active_admins INT;
+    v_inactive_admins INT;
+    v_unassigned_admins INT;
+    v_managed_interns INT;
+    v_coverage_count INT;
+    v_total_active_ps INT;
+    v_admins_list JSON;
+BEGIN
+    -- 1. Check Super Admin
+    IF NOT public.is_super_admin() THEN
+        RAISE EXCEPTION 'UNAUTHORIZED: Access denied. Super Admin privileges required.';
+    END IF;
+
+    -- Count Basic KPIs
+    SELECT COUNT(*) INTO v_total_admins FROM public.user_roles WHERE role = 'admin';
+    
+    SELECT COUNT(*) INTO v_active_admins 
+    FROM public.user_roles ur 
+    JOIN public.profiles p ON ur.user_id = p.id 
+    WHERE ur.role = 'admin' AND p.account_status = 'active';
+
+    SELECT COUNT(*) INTO v_inactive_admins 
+    FROM public.user_roles ur 
+    JOIN public.profiles p ON ur.user_id = p.id 
+    WHERE ur.role = 'admin' AND p.account_status != 'active' AND p.account_status != 'deleted';
+
+    -- Count Unassigned
+    SELECT COUNT(*) INTO v_unassigned_admins
+    FROM public.user_roles ur
+    JOIN public.profiles p ON ur.user_id = p.id
+    WHERE ur.role = 'admin' AND p.account_status != 'deleted' 
+      AND NOT EXISTS (SELECT 1 FROM public.admin_problem_statements aps WHERE aps.admin_id = p.id);
+
+    -- Count Managed Interns (Unique interns assigned to problem statements managed by admins)
+    SELECT COUNT(DISTINCT pr.id) INTO v_managed_interns
+    FROM public.profiles pr
+    JOIN public.admin_problem_statements aps ON pr.problem_statement_id = aps.problem_statement_id;
+
+    -- Problem Statement Coverage (Unique PS assigned to admins)
+    SELECT COUNT(DISTINCT problem_statement_id) INTO v_coverage_count
+    FROM public.admin_problem_statements;
+
+    -- Total Active PS
+    SELECT COUNT(*) INTO v_total_active_ps
+    FROM public.problem_statements WHERE status = 'active';
+
+    -- Build Admins List JSON
+    SELECT COALESCE(json_agg(
+        json_build_object(
+            'id', p.id,
+            'full_name', p.full_name,
+            'email', p.email,
+            'mobile', p.mobile,
+            'account_status', p.account_status,
+            'created_at', p.created_at,
+            'updated_at', p.updated_at,
+            'allocated_statements', (
+                SELECT COALESCE(json_agg(
+                    json_build_object(
+                        'id', ps.id,
+                        'title', ps.title,
+                        'status', ps.status
+                    )
+                ), '[]'::json)
+                FROM public.admin_problem_statements aps
+                JOIN public.problem_statements ps ON aps.problem_statement_id = ps.id
+                WHERE aps.admin_id = p.id
+            ),
+            'allocated_interns_count', (
+                SELECT COUNT(DISTINCT ip.id)
+                FROM public.admin_problem_statements aps
+                JOIN public.profiles ip ON aps.problem_statement_id = ip.problem_statement_id
+                WHERE aps.admin_id = p.id
+            )
+        ) ORDER BY p.created_at DESC
+    ), '[]'::json) INTO v_admins_list
+    FROM public.user_roles ur
+    JOIN public.profiles p ON ur.user_id = p.id
+    WHERE ur.role = 'admin' AND p.account_status != 'deleted';
+
+    RETURN json_build_object(
+        'total_admins', v_total_admins,
+        'active_admins', v_active_admins,
+        'inactive_admins', v_inactive_admins,
+        'unassigned_admins', v_unassigned_admins,
+        'managed_interns', v_managed_interns,
+        'coverage_count', v_coverage_count,
+        'total_active_ps', v_total_active_ps,
+        'admins', v_admins_list
+    );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_admin_kpis_and_list() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_admin_kpis_and_list() TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
+
+-- ==============================================================================
+-- UPDATE get_current_user_context (Fix: Include account_status)
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.get_current_user_context()
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+  v_role TEXT;
+  v_profile RECORD;
+  v_progress RECORD;
+BEGIN
+  IF v_uid IS NULL THEN
+    RETURN jsonb_build_object('contract_version', '1.0', 'authenticated', false);
+  END IF;
+
+  -- Fetch User Role (Explicit ROLE_MISSING if null)
+  SELECT role::text INTO v_role FROM public.user_roles WHERE user_id = v_uid;
+  
+  -- Fetch Profile Fields (including account_status)
+  SELECT id, full_name, account_status::text, onboarding_status::text INTO v_profile 
+  FROM public.profiles 
+  WHERE id = v_uid;
+
+  -- Fetch Onboarding Progress Flags
+  SELECT profile_completed, questionnaire_completed, learning_intro_completed, 
+         activities_completed, interview_completed, problem_statement_allocated, completion_percentage 
+  INTO v_progress 
+  FROM public.onboarding_progress 
+  WHERE intern_id = v_uid;
+
+  RETURN jsonb_build_object(
+    'contract_version', '1.0',
+    'authenticated', true,
+    'user', jsonb_build_object(
+      'id', v_uid,
+      'email', auth.email(),
+      'role', COALESCE(v_role, 'ROLE_MISSING')
+    ),
+    'profile', CASE 
+      WHEN v_profile.id IS NOT NULL THEN jsonb_build_object(
+        'id', v_profile.id,
+        'full_name', v_profile.full_name,
+        'account_status', v_profile.account_status,
+        'onboarding_status', v_profile.onboarding_status
+      )
+      ELSE NULL
+    END,
+    'onboarding_progress', CASE 
+      WHEN v_progress.profile_completed IS NOT NULL THEN to_jsonb(v_progress)
+      ELSE NULL
+    END
+  );
+END;
+$$;

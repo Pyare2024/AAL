@@ -1,45 +1,43 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
+import { useAuth } from '../../features/auth/context/AuthContext';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('intern');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (role === 'super_admin') navigate('/super-admin/dashboard');
-    else if (role === 'admin') navigate('/admin/dashboard');
-    else navigate('/intern/dashboard');
+    setErrorMsg('');
+    setIsSubmitting(true);
+    
+    try {
+      const userData = await signIn({ email, password });
+      const userRole = userData?.role;
+      
+      if (userRole === 'super_admin') navigate('/super-admin/dashboard');
+      else if (userRole === 'admin') navigate('/admin/dashboard');
+      else navigate('/intern/dashboard');
+    } catch (err) {
+      setErrorMsg(err.message || 'Invalid login credentials.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      <div>
-        <label className="block text-xs font-bold uppercase tracking-wider text-[#9A9A9A] mb-2">Select Portal</label>
-        <div className="grid grid-cols-3 gap-2 p-1 bg-[#F7F7F7] border border-[#EDEDED] rounded-xl">
-          {[
-            { id: 'intern', label: 'Intern' },
-            { id: 'admin', label: 'Admin' },
-            { id: 'super_admin', label: 'Super Admin' },
-          ].map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setRole(item.id)}
-              className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-                role === item.id
-                  ? 'bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] text-white shadow-sm'
-                  : 'text-[#0D0D0D] hover:text-[#FF8A00]'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+      {errorMsg && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl flex items-center gap-2 text-sm font-medium">
+          <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
+          <span>{errorMsg}</span>
         </div>
-      </div>
+      )}
 
       <div>
         <label className="block text-xs font-bold text-[#0D0D0D] mb-1.5">Email Address</label>
@@ -78,10 +76,11 @@ export function LoginPage() {
 
       <button
         type="submit"
-        className="w-full py-3.5 px-4 bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] text-white font-semibold text-sm rounded-xl shadow-lg shadow-[#FF3D00]/25 hover:opacity-95 hover:shadow-xl hover:shadow-[#FF3D00]/35 transition-all flex items-center justify-center gap-2 group"
+        disabled={isSubmitting}
+        className="w-full py-3.5 px-4 bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] text-white font-semibold text-sm rounded-xl shadow-lg shadow-[#FF3D00]/25 hover:opacity-95 hover:shadow-xl hover:shadow-[#FF3D00]/35 disabled:opacity-70 transition-all flex items-center justify-center gap-2 group"
       >
-        <span>Sign In to Dashboard</span>
-        <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+        <span>{isSubmitting ? 'Signing in...' : 'Sign In to Dashboard'}</span>
+        {!isSubmitting && <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />}
       </button>
 
       <div className="text-center pt-2">

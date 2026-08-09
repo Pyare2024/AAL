@@ -25,8 +25,8 @@ export function AdminDashboardPage() {
     allocatedActiveInternsCount: 0,
     onboardingInternsCount: 0,
     pendingWorkReviewsCount: 0,
-    attendanceRate: '94.2%',
-    learningProgressRate: '78.5%',
+    attendanceRate: '0%',
+    learningProgressRate: '0%',
   });
 
   const [allocatedStatements, setAllocatedStatements] = useState([]);
@@ -41,46 +41,104 @@ export function AdminDashboardPage() {
       if (!user) return;
 
       // 1. Fetch allocated Problem Statements for this Admin
-      const { data: adminPsData } = await supabase
+      const { data: adminPsData, error: psErr } = await supabase
         .from('admin_problem_statements')
         .select('problem_statement_id, problem_statements(id, title, slug, status)')
         .eq('admin_id', user.id);
+
+      if (psErr) console.error('Error fetching admin statements:', psErr);
 
       const statements = (adminPsData || [])
         .map((row) => row.problem_statements)
         .filter(Boolean);
 
       setAllocatedStatements(statements);
-
       const statementIds = statements.map((s) => s.id);
 
-      // 2. Fetch count of active interns linked to these problem statements via profiles.problem_statement_id
+      // Default metric states (Empty scope)
       let activeInternsCount = 0;
+      let onboardingCount = 0;
+      let pendingReviews = 0;
+      let attendanceRate = '0%';
+      let learningProgressRate = '0%';
+
       if (statementIds.length > 0) {
-        const { data: internPsData } = await supabase
+        // Fetch all interns assigned to these problem statements
+        const { data: allInterns, error: internsErr } = await supabase
           .from('profiles')
-          .select('id')
+          .select('id, account_status, onboarding_status')
           .in('problem_statement_id', statementIds);
 
-        activeInternsCount = (internPsData || []).length;
-      }
+        if (internsErr) console.error('Error fetching interns:', internsErr);
+        
+        const interns = allInterns || [];
+        const internIds = interns.map((i) => i.id);
 
-      // 3. Fetch all onboarding interns count (Admins can view all onboarding interns)
-      const { count: onboardingCount } = await supabase
-        .from('profiles')
-        .select('id', { count: 'exact', head: true })
-        .neq('onboarding_status', 'completed');
+        // 2. Allocated Active Interns
+        activeInternsCount = interns.filter((i) => i.account_status === 'active').length;
+
+        // 3. Onboarding Interns
+        onboardingCount = interns.filter((i) => i.onboarding_status !== 'completed').length;
+
+        if (internIds.length > 0) {
+          // 4. Pending Work Reviews (daily diaries awaiting review - status 'submitted')
+          // Using 'submitted' as the schema enum does not contain 'pending'
+          const { count: diaryCount, error: diaryErr } = await supabase
+            .from('daily_diary_entries')
+            .select('id', { count: 'exact', head: true })
+            .in('intern_id', internIds)
+            .eq('status', 'submitted');
+          
+          if (diaryErr) console.error('Error fetching diaries:', diaryErr);
+          pendingReviews = diaryCount || 0;
+
+          // 5. Attendance Summary
+          const { data: attendanceData, error: attErr } = await supabase
+            .from('attendance_records')
+            .select('status')
+            .in('intern_id', internIds);
+
+          if (attErr) console.error('Error fetching attendance:', attErr);
+          
+          if (attendanceData && attendanceData.length > 0) {
+            const presentCount = attendanceData.filter((r) => r.status === 'present').length;
+            const rate = (presentCount / attendanceData.length) * 100;
+            attendanceRate = `${rate.toFixed(1)}%`;
+          } else {
+            attendanceRate = 'N/A';
+          }
+
+          // 6. Learning Progress Summary
+          const { data: progressData, error: progErr } = await supabase
+            .from('onboarding_progress')
+            .select('completion_percentage')
+            .in('intern_id', internIds);
+
+          if (progErr) console.error('Error fetching progress:', progErr);
+          
+          if (progressData && progressData.length > 0) {
+            const sum = progressData.reduce((acc, curr) => acc + (curr.completion_percentage || 0), 0);
+            const avg = sum / progressData.length;
+            learningProgressRate = `${avg.toFixed(1)}%`;
+          } else {
+            learningProgressRate = 'N/A';
+          }
+        } else {
+          attendanceRate = 'N/A';
+          learningProgressRate = 'N/A';
+        }
+      }
 
       setMetrics({
         allocatedStatementsCount: statements.length,
-        allocatedActiveInternsCount: activeInternsCount || 12, // fallback count if unassigned
-        onboardingInternsCount: onboardingCount || 24,
-        pendingWorkReviewsCount: 8,
-        attendanceRate: '95.4%',
-        learningProgressRate: '82.0%',
+        allocatedActiveInternsCount: activeInternsCount,
+        onboardingInternsCount: onboardingCount,
+        pendingWorkReviewsCount: pendingReviews,
+        attendanceRate,
+        learningProgressRate,
       });
     } catch (err) {
-      console.error('Error loading Admin Dashboard metrics:', err);
+      console.error('Critical error loading Admin Dashboard metrics:', err);
     } finally {
       setLoading(false);
     }
@@ -165,7 +223,7 @@ export function AdminDashboardPage() {
               <UserCheck className="h-6 w-6" />
             </div>
             <span className="text-xs font-bold px-2.5 py-0.5 bg-emerald-50 text-emerald-600 rounded-full">
-              Platform-wide
+              Assigned Scope
             </span>
           </div>
           <div>

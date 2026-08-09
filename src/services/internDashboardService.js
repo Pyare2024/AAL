@@ -18,11 +18,11 @@ export async function fetchInternDashboardSummary() {
  * Lazy query helper to fetch optional feature previews (Diary today status, LMS progress, Onboarding step status)
  */
 export async function fetchInternDashboardLazyDetails(userId) {
-  if (!userId) return {};
+  if (!userId) return null;
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  const [diaryRes, learningRes, onboardingRes, interviewRes] = await Promise.allSettled([
+  const [diaryRes, learningRes, onboardingRes, interviewRes] = await Promise.all([
     // 1. Daily Diary Today Status
     supabase
       .from('daily_diary_entries')
@@ -54,11 +54,17 @@ export async function fetchInternDashboardLazyDetails(userId) {
       .limit(1)
   ]);
 
-  const diaryEntries = diaryRes.status === 'fulfilled' && !diaryRes.value.error ? diaryRes.value.data : [];
+  // Throw if any of the mandatory data queries failed
+  if (diaryRes.error) throw diaryRes.error;
+  if (learningRes.error) throw learningRes.error;
+  if (onboardingRes.error) throw onboardingRes.error;
+  if (interviewRes.error) throw interviewRes.error;
+
+  const diaryEntries = diaryRes.data || [];
   const todayDiary = diaryEntries.find(e => e.entry_date === todayStr);
   const lastDiary = diaryEntries[0];
 
-  const learningList = learningRes.status === 'fulfilled' && !learningRes.value.error ? learningRes.value.data : [];
+  const learningList = learningRes.data || [];
   const totalAssignedModules = learningList.length;
   const completedModules = learningList.filter(l => l.status === 'completed' || l.progress_percentage === 100).length;
   const inProgressModules = learningList.filter(l => l.status === 'in_progress' || (l.progress_percentage > 0 && l.progress_percentage < 100)).length;
@@ -66,8 +72,8 @@ export async function fetchInternDashboardLazyDetails(userId) {
     ? Math.round(learningList.reduce((acc, curr) => acc + (curr.progress_percentage || 0), 0) / totalAssignedModules)
     : 0;
 
-  const onboardingData = onboardingRes.status === 'fulfilled' && !onboardingRes.value.error ? onboardingRes.value.data : null;
-  const upcomingInterview = interviewRes.status === 'fulfilled' && !interviewRes.value.error && interviewRes.value.data?.length ? interviewRes.value.data[0] : null;
+  const onboardingData = onboardingRes.data || null;
+  const upcomingInterview = interviewRes.data?.length ? interviewRes.data[0] : null;
 
   return {
     diary: {

@@ -140,7 +140,60 @@ export async function fetchAllInterns() {
     // Optional table
   }
 
-  return profiles.map((i, idx) => {
+  // Fetch Leaderboard Points
+  const pointsMap = {};
+  try {
+    const { data: ptsRows } = await supabase
+      .from('leaderboard_points')
+      .select('intern_id, points')
+      .in('intern_id', profileIds);
+    (ptsRows || []).forEach(row => {
+      pointsMap[row.intern_id] = (pointsMap[row.intern_id] || 0) + row.points;
+    });
+  } catch (e) {}
+
+  // Calculate Ranks
+  const sortedPoints = Object.entries(pointsMap).sort((a, b) => b[1] - a[1]);
+  const rankMap = {};
+  let currentRank = 1;
+  sortedPoints.forEach(([id, pts], index) => {
+    if (index > 0 && pts < sortedPoints[index - 1][1]) {
+      currentRank = index + 1;
+    }
+    rankMap[id] = currentRank;
+  });
+
+  // Fetch Daily Diary
+  const diaryMap = {};
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const { data: diaryRows } = await supabase
+      .from('daily_diary_entries')
+      .select('intern_id, status')
+      .eq('entry_date', today)
+      .in('intern_id', profileIds);
+    (diaryRows || []).forEach(row => {
+      diaryMap[row.intern_id] = row.status;
+    });
+  } catch(e) {}
+
+  // Fetch Assigned Admins
+  const problemStatementIds = [...new Set(profiles.map(p => p.problem_statement_id).filter(id => id))];
+  const adminMap = {};
+  if (problemStatementIds.length > 0) {
+    try {
+      const { data: adminRows } = await supabase
+        .from('admin_problem_statements')
+        .select('problem_statement_id, profiles!inner(full_name)')
+        .in('problem_statement_id', problemStatementIds);
+      (adminRows || []).forEach(row => {
+        if (!adminMap[row.problem_statement_id]) adminMap[row.problem_statement_id] = [];
+        adminMap[row.problem_statement_id].push(row.profiles?.full_name || 'Admin');
+      });
+    } catch(e) {}
+  }
+
+  return profiles.map((i) => {
     const rawStatus = (i.account_status || 'pending').toLowerCase();
     let displayStatus = 'Active';
     if (rawStatus === 'suspended') displayStatus = 'Suspended';
@@ -149,6 +202,14 @@ export async function fetchAllInterns() {
 
     const att = attendanceMap[i.id];
     const attendanceRate = att && att.total > 0 ? `${Math.round((att.present / att.total) * 100)}%` : 'N/A';
+    
+    const assignedAdmins = i.problem_statement_id && adminMap[i.problem_statement_id] 
+      ? adminMap[i.problem_statement_id] 
+      : [];
+
+    const pts = pointsMap[i.id] || 0;
+    const rank = rankMap[i.id] || 'N/A';
+    const diaryStatus = diaryMap[i.id] || 'N/A';
 
     return {
       id: i.id,
@@ -171,13 +232,13 @@ export async function fetchAllInterns() {
       problemStatementId: i.problem_statement_id,
       problemStatementTitle: i.problem_statements?.title || 'Unassigned',
       problemStatement: i.problem_statements?.title || 'Unassigned',
-      assignedAdmins: ['Super Admin Console'],
+      assignedAdmins,
       startDate: i.internship_started_at ? new Date(i.internship_started_at).toLocaleDateString() : 'Active',
       attendanceRate,
-      dailyDiaryStatus: 'Submitted',
+      dailyDiaryStatus: diaryStatus,
       learningProgress: `${progressMap[i.id]?.completion_percentage || 0}%`,
-      leaderboardRank: `#${idx + 1}`,
-      points: 1200 + (100 * (10 - idx)),
+      leaderboardRank: rank !== 'N/A' ? `#${rank}` : 'N/A',
+      points: pts,
       completionStatus: i.onboarding_status === 'completed' ? 'Completed' : 'In Progress',
       onboardingProgress: progressMap[i.id] || null,
     };
@@ -238,7 +299,15 @@ export async function updateInternStatus(internId, newStatus) {
   return data;
 }
 
-// 7. Atomic problem statement allocation via RPC or fallback transaction
+// 7. Atomic safe delete for intern via RPC
+export async function deleteInternSafe(internId) {
+  if (!internId) throw new Error('Intern ID is required.');
+  const { data, error } = await supabase.rpc('delete_intern_safe', { p_intern_id: internId });
+  if (error) throw error;
+  return data;
+}
+
+// 8. Atomic problem statement allocation via RPC or fallback transaction
 export async function assignProblemStatement(internId, problemStatementId, allocatedBy, allocationNote = '') {
   await fetchInternById(internId); // Enforces canonical intern role check
 
@@ -289,7 +358,7 @@ export async function assignProblemStatement(internId, problemStatementId, alloc
   }
 }
 
-// 8. Subscribe to Realtime intern management updates
+// 9. Subscribe to Realtime intern management updates
 export function subscribeToInternManagementChanges(onPayloadCallback) {
   const channel = supabase
     .channel('realtime_intern_management_v3')

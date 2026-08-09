@@ -31,22 +31,12 @@ export function Login() {
 
     setLoading(true);
     try {
-      const res = await signIn({ email, password });
-      const authUser = res?.user;
-
-      if (authUser) {
-        // Query user's assigned role from user_roles
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', authUser.id)
-          .maybeSingle();
-
-        const userRole = roleData?.role || 'intern';
-
-        if (userRole === 'super_admin') {
+      const userData = await signIn({ email, password });
+      
+      if (userData && userData.role) {
+        if (userData.role === 'super_admin') {
           navigate('/super-admin/dashboard', { replace: true });
-        } else if (userRole === 'admin') {
+        } else if (userData.role === 'admin') {
           navigate('/admin/dashboard', { replace: true });
         } else {
           navigate('/intern/dashboard', { replace: true });
@@ -55,7 +45,9 @@ export function Login() {
         navigate('/intern/dashboard', { replace: true });
       }
     } catch (err) {
-      console.error(err);
+      if (err.message !== 'Your account is no longer active.') {
+        console.error(err);
+      }
       setError(err.message || 'Invalid email or password. Please try again.');
     } finally {
       setLoading(false);
