@@ -55,7 +55,7 @@ export function RoleGuard({ allowedRoles, children }) {
  * Always redirects incomplete interns to their exact required step.
  */
 export function OnboardingGuard({ children }) {
-  const { role, profile, onboardingProgress, loading } = useAuth();
+  const { role, onboardingProgress, loading } = useAuth();
 
   if (loading) {
     return (
@@ -66,7 +66,8 @@ export function OnboardingGuard({ children }) {
   }
 
   if (role === 'intern') {
-    const isCompleted = isOnboardingCompleted(onboardingProgress) || profile?.onboarding_status === 'completed';
+    // Strictly requires problem_statement_allocated === true in onboarding_progress
+    const isCompleted = isOnboardingCompleted(onboardingProgress);
     if (!isCompleted) {
       const requiredRoute = getNextOnboardingRoute(onboardingProgress);
       return <Navigate to={requiredRoute} replace />;
@@ -93,7 +94,8 @@ export function OnboardingStepGuard({ children }) {
   }
 
   if (role === 'intern') {
-    const isCompleted = isOnboardingCompleted(onboardingProgress) || profile?.onboarding_status === 'completed';
+    // Strictly requires problem_statement_allocated === true in onboarding_progress
+    const isCompleted = isOnboardingCompleted(onboardingProgress);
     if (isCompleted) {
       if (process.env.NODE_ENV !== 'production') {
         console.log('Guard requested path:', location.pathname);

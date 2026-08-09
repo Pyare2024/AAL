@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { calculateCompletionPercentage, isOnboardingCompleted } from '../../../utils/onboardingUtils';
+import { OnboardingTimeline } from '../../../components/onboarding/OnboardingTimeline';
 import { 
   Calendar, 
   Clock, 
@@ -27,6 +28,8 @@ export function OnboardingInterview() {
   const [problemStatementData, setProblemStatementData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+
+  const [allocationHistory, setAllocationHistory] = useState(null);
 
   useEffect(() => {
     async function loadData() {
@@ -56,6 +59,17 @@ export function OnboardingInterview() {
 
           if (psData) setProblemStatementData(psData);
         }
+
+        // 3. Fetch Allocation History to get assigned admin and exact allocation timestamp
+        const { data: histData } = await supabase
+          .from('intern_problem_statement_history')
+          .select('*, profiles!intern_problem_statement_history_allocated_by_fkey(full_name)')
+          .eq('intern_id', user.id)
+          .order('allocated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (histData) setAllocationHistory(histData);
       } catch (err) {
         console.error('Error fetching interview or allocation status:', err);
       } finally {
@@ -102,7 +116,8 @@ export function OnboardingInterview() {
   const isOnHold = rawStatus === 'on hold' || rawStatus === 'onhold';
   const isPending = !interviewData || rawStatus === 'pending';
 
-  const isAllocated = !!onboardingProgress?.problem_statement_allocated || profile?.onboarding_status === 'problem_statement_allocated' || profile?.onboarding_status === 'completed';
+  // Problem statement is ONLY allocated if explicitly set in onboarding_progress or profile.problem_statement_id
+  const isAllocated = !!onboardingProgress?.problem_statement_allocated || (!!profile?.problem_statement_id && profile?.onboarding_status === 'completed');
 
   const handleCopyLink = () => {
     if (interviewData?.meeting_link) {
@@ -129,25 +144,9 @@ export function OnboardingInterview() {
     : 'N/A';
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 text-left">
-      {/* Stepper Header */}
-      <div className="bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-sm">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <span className="text-xs font-bold text-[#FF3D00] uppercase tracking-wider">Step 5 of 5</span>
-            <h1 className="text-xl font-bold text-[#0D0D0D]">Interview & Problem Statement Allocation</h1>
-          </div>
-          <span className="text-xs font-extrabold px-3 py-1 bg-gradient-to-r from-[#FF8A00]/10 to-[#FF3D00]/10 border border-[#FF8A00]/20 text-[#FF3D00] rounded-full">
-            {completionPercentage}% Complete
-          </span>
-        </div>
-        <div className="w-full bg-[#EDEDED] h-2 rounded-full overflow-hidden">
-          <div 
-            className="bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] h-full transition-all duration-500"
-            style={{ width: `${completionPercentage}%` }}
-          />
-        </div>
-      </div>
+    <div className="max-w-4xl mx-auto space-y-6 text-left">
+      {/* Top Continuous Horizontal Onboarding Timeline Navigation */}
+      <OnboardingTimeline />
 
       {/* PHASE 4: GREEN SUCCESS CARD WHEN ALLOCATED */}
       {isAllocated ? (
@@ -172,15 +171,15 @@ export function OnboardingInterview() {
             <div className="space-y-2 text-xs">
               <div className="flex justify-between items-center p-2.5 bg-white rounded-lg border border-[#EDEDED]">
                 <span className="text-[#9A9A9A] font-semibold">Problem Statement</span>
-                <strong className="text-[#0D0D0D] font-bold text-right">{problemStatementData?.title || 'AI Automated Workflow & Intelligent Data Pipeline Engine'}</strong>
+                <strong className="text-[#0D0D0D] font-bold text-right">{problemStatementData?.title || 'Pending Allocation'}</strong>
               </div>
               <div className="flex justify-between items-center p-2.5 bg-white rounded-lg border border-[#EDEDED]">
                 <span className="text-[#9A9A9A] font-semibold">Assigned Admin</span>
-                <strong className="text-[#0D0D0D] font-bold">Super Admin Allocated</strong>
+                <strong className="text-[#0D0D0D] font-bold">{allocationHistory?.profiles?.full_name || 'Super Admin'}</strong>
               </div>
               <div className="flex justify-between items-center p-2.5 bg-white rounded-lg border border-[#EDEDED]">
                 <span className="text-[#9A9A9A] font-semibold">Allocation Date</span>
-                <strong className="text-[#0D0D0D] font-bold">{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</strong>
+                <strong className="text-[#0D0D0D] font-bold">{allocationHistory?.allocated_at ? new Date(allocationHistory.allocated_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</strong>
               </div>
             </div>
           </div>

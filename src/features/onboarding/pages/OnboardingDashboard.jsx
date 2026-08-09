@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { calculateCompletionPercentage } from '../../../utils/onboardingUtils';
+import { OnboardingTimeline } from '../../../components/onboarding/OnboardingTimeline';
 
 export function OnboardingDashboard() {
   const navigate = useNavigate();
@@ -62,7 +63,9 @@ export function OnboardingDashboard() {
   const completionPct = calculateCompletionPercentage(onboardingProgress);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Top Continuous Horizontal Onboarding Timeline Navigation */}
+      <OnboardingTimeline />
       {/* Overview Banner */}
       <div className="bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

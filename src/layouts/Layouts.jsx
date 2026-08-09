@@ -54,6 +54,8 @@ function InternLayoutContent() {
   const location = useLocation();
   const { isCollapsed, toggleMobileMenu } = useSidebar();
 
+  const isOnboardingRoute = location.pathname.startsWith('/onboarding/');
+
   const isRouteActive = (itemTo) => {
     const current = location.pathname;
     if (itemTo === '/intern/dashboard') return current === '/intern/dashboard';
@@ -73,32 +75,34 @@ function InternLayoutContent() {
 
   return (
     <div className="min-h-screen bg-[#F7F7F7] flex">
-      {/* Fixed Full-Height Sidebar */}
-      <EnterpriseSidebar isRouteActive={isRouteActive} />
+      {/* Render Sidebar ONLY for main intern portal routes, NOT for onboarding routes */}
+      {!isOnboardingRoute && <EnterpriseSidebar isRouteActive={isRouteActive} />}
 
-      {/* Main Page Body (Offset by sidebar width on desktop) */}
+      {/* Main Page Body (No left margin offset when on onboarding routes) */}
       <div className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ease-in-out ${
-        isCollapsed ? 'md:ml-[72px]' : 'md:ml-[280px]'
+        !isOnboardingRoute ? (isCollapsed ? 'md:ml-[72px]' : 'md:ml-[280px]') : 'ml-0'
       }`}>
-        {/* Mobile Header Bar with Hamburger Menu Toggle */}
-        <header className="md:hidden bg-white border-b border-[#EDEDED] p-3 flex justify-between items-center sticky top-0 z-20">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] flex items-center justify-center text-white font-bold text-xs">
-              A
+        {/* Mobile Header Bar with Hamburger Menu Toggle (Only for non-onboarding routes) */}
+        {!isOnboardingRoute && (
+          <header className="md:hidden bg-white border-b border-[#EDEDED] p-3 flex justify-between items-center sticky top-0 z-20">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] flex items-center justify-center text-white font-bold text-xs">
+                A
+              </div>
+              <span className="font-bold text-sm text-[#171717]">AI Apex</span>
             </div>
-            <span className="font-bold text-sm text-[#171717]">AI Apex</span>
-          </div>
-          <button
-            type="button"
-            onClick={toggleMobileMenu}
-            aria-label="Open Navigation Menu"
-            className="p-2 rounded-lg text-[#171717] hover:bg-[#F5F5F5]"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-        </header>
+            <button
+              type="button"
+              onClick={toggleMobileMenu}
+              aria-label="Open Navigation Menu"
+              className="p-2 rounded-lg text-[#171717] hover:bg-[#F5F5F5]"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          </header>
+        )}
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 max-w-7xl mx-auto w-full">
           <Outlet />
         </main>
       </div>

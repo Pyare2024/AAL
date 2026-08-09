@@ -7,6 +7,8 @@ import {
   saveInternQuestionnaireDraft,
   submitInternQuestionnaire
 } from '../../../services/questionnaireSubmissionService';
+import { calculateCompletionPercentage } from '../../../utils/onboardingUtils';
+import { OnboardingTimeline } from '../../../components/onboarding/OnboardingTimeline';
 import { 
   FileText, 
   CheckCircle2, 
@@ -231,25 +233,9 @@ export function OnboardingQuestionnaire() {
   const isReadOnly = isPendingReview || isApproved;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      {/* Stepper Header */}
-      <div className="bg-[#FFFFFF] border border-[#EDEDED] rounded-2xl p-6 shadow-sm">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <span className="text-xs font-bold text-[#FF3D00] uppercase tracking-wider">Step 2 of 5</span>
-            <h1 className="text-xl font-bold text-[#0D0D0D]">Intern Assessment Questionnaire</h1>
-            <p className="text-xs text-[#9A9A9A] mt-1">
-              Please complete all technical, non-technical, and AI tools assessment sections.
-            </p>
-          </div>
-          <span className="text-xs font-extrabold px-3 py-1 bg-gradient-to-r from-[#FF8A00]/10 to-[#FF3D00]/10 border border-[#FF8A00]/20 text-[#FF3D00] rounded-full">
-            40% Complete
-          </span>
-        </div>
-        <div className="w-full bg-[#EDEDED] h-2 rounded-full overflow-hidden">
-          <div className="bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] h-full w-[40%] transition-all duration-500"></div>
-        </div>
-      </div>
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Top Continuous Horizontal Onboarding Timeline Navigation */}
+      <OnboardingTimeline />
 
       {/* Success Banner after submission */}
       {isSubmitted && (

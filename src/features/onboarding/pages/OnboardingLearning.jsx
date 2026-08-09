@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { updateOnboardingStepProgress } from '../../../utils/onboardingUtils';
+import { OnboardingTimeline } from '../../../components/onboarding/OnboardingTimeline';
 import { BookOpen, ExternalLink, CheckCircle2, ArrowRight, Loader2, Play } from 'lucide-react';
 
 export function OnboardingLearning() {
@@ -43,22 +44,9 @@ export function OnboardingLearning() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      {/* Header Stepper */}
-      <div className="bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-sm">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <span className="text-xs font-bold text-[#FF3D00] uppercase tracking-wider">Step 3 of 5</span>
-            <h1 className="text-xl font-bold text-[#0D0D0D]">Learning & LMS Introduction</h1>
-          </div>
-          <span className="text-xs font-extrabold px-3 py-1 bg-gradient-to-r from-[#FF8A00]/10 to-[#FF3D00]/10 border border-[#FF8A00]/20 text-[#FF3D00] rounded-full">
-            60% Complete
-          </span>
-        </div>
-        <div className="w-full bg-[#EDEDED] h-2 rounded-full overflow-hidden">
-          <div className="bg-gradient-to-r from-[#FF8A00] to-[#FF3D00] h-full w-[60%] transition-all duration-500"></div>
-        </div>
-      </div>
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Top Continuous Horizontal Onboarding Timeline Navigation */}
+      <OnboardingTimeline />
 
       {/* Content Card */}
       <div className="bg-white border border-[#EDEDED] rounded-2xl p-6 shadow-sm space-y-6">
